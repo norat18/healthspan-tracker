@@ -1,0 +1,7 @@
+firebase-debug.log
+*.log
+.firebase/
+node_modules/
+.DS_Store
+.cloudflare/
+.wrangler/
