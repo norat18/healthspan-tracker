@@ -3,12 +3,12 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/fireba
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   deleteUser, reauthenticateWithPopup } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, deleteDoc, onSnapshot, runTransaction, serverTimestamp }
+import { getFirestore, doc, getDoc, deleteDoc, onSnapshot, runTransaction, serverTimestamp, collection, getDocs }
   from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { firebaseConfig, appCheckSiteKey } from './firebase-config.js';
 
 // Run the sign-in handler on this site's own address (Firebase Hosting serves it; Cloudflare proxies it — see
-// functions/__/[[path]].js). Browsers that block third-party storage (Safari, newer Chrome) then still complete sign-in.
+// functions/[[path]].js). Browsers that block third-party storage (Safari, newer Chrome) then still complete sign-in.
 const ownHandler = /\.(web\.app|firebaseapp\.com|pages\.dev)$/.test(location.hostname);
 const app = initializeApp({ ...firebaseConfig, authDomain: ownHandler ? location.host : firebaseConfig.authDomain });
 // App Check: proves requests come from this app (blocks scripted abuse of the database).
@@ -16,6 +16,11 @@ if (appCheckSiteKey && location.hostname !== 'localhost') initializeAppCheck(app
 const auth = getAuth(app);
 const store = getFirestore(app);
 const ref = () => doc(store, 'users', auth.currentUser.uid);
+// Daily history: users/{uid}/history/{YYYY-MM-DD} holds the data as it was before that day's first change.
+const histCol = () => collection(store, 'users', auth.currentUser.uid, 'history');
+const histRef = day => doc(store, 'users', auth.currentUser.uid, 'history', day);
+const KEEP_DAYS = 30;
+const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const provider = () => { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return p; };
 
 // Finish a full-page (redirect) sign-in when returning from Google.
@@ -40,11 +45,25 @@ window.cloud = {
   async load() { const s = await getDoc(ref()); return s.exists() ? s.data() : null; },
   /** Save only if nobody else saved since `baseMs`; otherwise return the newer copy so the app can merge. */
   save: (json, savedAtMs, baseMs) => runTransaction(store, async tx => {
+    const day = localDay();
     const snap = await tx.get(ref()), remote = snap.exists() ? snap.data() : null;
+    const hist = remote ? await tx.get(histRef(day)) : null;
     if (remote && (remote.savedAtMs || 0) > (baseMs || 0)) return { conflict: remote };
+    // First save of the day: keep a copy of yesterday's state so it can be restored.
+    if (remote && !hist.exists()) tx.set(histRef(day), { data: remote.data, savedAtMs: remote.savedAtMs || 0, schema: 1 });
     tx.set(ref(), { data: json, savedAtMs, updatedAt: serverTimestamp(), schema: 1 });
-    return { ok: true };
+    return { ok: true, newDay: remote && !hist.exists() };
   }),
+  /** Earlier daily copies, newest first: [{ day, savedAtMs, data }] */
+  async history() {
+    const snaps = await getDocs(histCol());
+    return snaps.docs.map(d => ({ day: d.id, ...d.data() })).sort((a, b) => b.day.localeCompare(a.day));
+  },
+  /** Keep only the newest KEEP_DAYS copies. */
+  async pruneHistory() {
+    const all = (await getDocs(histCol())).docs.map(d => d.id).sort().reverse();
+    await Promise.all(all.slice(KEEP_DAYS).map(day => deleteDoc(histRef(day))));
+  },
   /** Live updates when another device saves. */
   watch(cb) {
     if (unwatch) unwatch();
@@ -54,6 +73,7 @@ window.cloud = {
   /** Permanently delete the saved data and the sign-in account. */
   async removeAll() {
     if (unwatch) { unwatch(); unwatch = null; }
+    await Promise.all((await getDocs(histCol())).docs.map(d => deleteDoc(d.ref)));
     await deleteDoc(ref());
     try { await deleteUser(auth.currentUser); }
     catch (err) {

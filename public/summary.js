@@ -69,10 +69,10 @@ function vSummary() {
     <div class="muted small">As of ${fmt(T)}${age != null ? ` · age ${age} (next birthday ${fmt(nextBirthday(dob))})` : ''} · tap any result for its history</div></div>
     <div class="legend small"><span><i class="dot ok"></i>In range</span><span><i class="dot bad"></i>Outside target</span><span><i class="dot none"></i>No target / not tested</span></div></div>
 
-  ${!db.settings.dob ? `<div class="card welcome"><div class="card-b"><h2 style="margin:0 0 4px">Welcome to Healthspan Tracker</h2>
+  ${!db.settings.dob || !db.settings.sex ? `<div class="card welcome"><div class="card-b"><h2 style="margin:0 0 4px">Welcome to Healthspan Tracker</h2>
     <p>Track your blood tests, body and fitness results, scans, screenings and vaccines in one place — and get reminded when each is due. Start with two details so recommendations fit you:</p>
-    <div class="grid2" style="max-width:520px"><label class="f">Date of birth<input id="dob" type="date"></label>
-    <label class="f">Sex (for screenings &amp; fitness norms)<select id="sex"><option value="">Choose…</option><option value="female">Female</option><option value="male">Male</option></select></label></div>
+    <div class="grid2" style="max-width:520px"><label class="f">Date of birth<input id="dob" type="date" value="${db.settings.dob || ''}"></label>
+    <label class="f">Sex (for screenings &amp; fitness norms)<select id="sex"><option value="">Choose…</option><option value="female" ${db.settings.sex === 'female' ? 'selected' : ''}>Female</option><option value="male" ${db.settings.sex === 'male' ? 'selected' : ''}>Male</option></select></label></div>
     <p class="small muted" style="margin-top:10px">${cloudSync.user ? 'Saved to your account.' : 'Your data stays in this browser unless you <a href="#" data-signin>sign in with Google</a> to save it across devices. <a href="privacy.html">How your data is protected</a>'}</p></div></div>` : ''}
   <div class="sum-top">
     <div class="card attn"><div class="card-h"><h3>Needs attention</h3><span class="chip ${flagged.length + scanFlags.length ? 'overdue' : 'ok'}">${flagged.length + scanFlags.length}</span></div>

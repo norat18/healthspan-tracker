@@ -53,20 +53,32 @@ export default {
   },
 };
 
+const SEND_HOUR = 8;
+/** Local date (YYYY-MM-DD), hour and weekday for a time zone; falls back to UTC for unknown zones. */
+function localNow(tz, now = new Date()) {
+  let zone = 'UTC'; try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); zone = tz || 'UTC'; } catch { }
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hourCycle: 'h23', weekday: 'short' }).formatToParts(now).map(p => [p.type, p.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), monday: parts.weekday === 'Mon' };
+}
+const addDays = (date, n) => new Date(Date.parse(date + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+/** Which reminders (if any) to send for this person right now. */
+export function shouldNotify(row, now = new Date()) {
+  const local = localNow(row.tz, now);
+  if (local.hour !== SEND_HOUR || row.last_sent === local.date) return null;
+  let due = []; try { due = JSON.parse(row.due); } catch { }
+  const inWeek = addDays(local.date, 7);
+  const hit = due.some(x => x.d === local.date || x.d === inWeek || (local.monday && x.d < local.date));
+  return hit ? local.date : null;
+}
 async function sendDailyReminders(env) {
   await env.DB.prepare(SCHEMA).run();
-  const today = new Date().toISOString().slice(0, 10);
-  const inWeek = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-  const monday = new Date().getUTCDay() === 1;
-  const rows = (await env.DB.prepare('SELECT endpoint, due, last_sent FROM subs').all()).results;
+  const rows = (await env.DB.prepare('SELECT endpoint, due, tz, last_sent FROM subs').all()).results;
   for (const r of rows) {
-    if (r.last_sent === today) continue;
-    let due = []; try { due = JSON.parse(r.due); } catch { }
-    const hit = due.some(x => x.d === today || x.d === inWeek || (monday && x.d < today));
-    if (!hit) continue;
+    const day = shouldNotify(r); if (!day) continue;
     const ok = await sendPush(r.endpoint, env);
     if (ok === 'gone') await env.DB.prepare('DELETE FROM subs WHERE endpoint = ?1').bind(r.endpoint).run();
-    else if (ok) await env.DB.prepare('UPDATE subs SET last_sent = ?1 WHERE endpoint = ?2').bind(today, r.endpoint).run();
+    else if (ok) await env.DB.prepare('UPDATE subs SET last_sent = ?1 WHERE endpoint = ?2').bind(day, r.endpoint).run();
   }
 }
 

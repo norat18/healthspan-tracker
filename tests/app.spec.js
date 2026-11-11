@@ -1,0 +1,86 @@
+// Browser smoke test: opens the app like a new visitor, sets it up, adds sample data, and visits every screen.
+// Fails on any JavaScript error. Run: npx playwright test
+import { test, expect } from '@playwright/test';
+
+const TABS = ['summary', 'reminders', 'blood', 'body', 'procs', 'myinfo', 'data'];
+
+test('a new visitor can set up and use every screen without errors', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push('page error: ' + e.message));
+  page.on('console', m => { if (m.type() === 'error' && !/firebase|googleapis|gstatic|recaptcha|net::ERR/i.test(m.text())) errors.push('console: ' + m.text()); });
+
+  await page.goto('/');
+  await expect(page.locator('h1')).toHaveText('Healthspan Tracker');
+  await expect(page.locator('.welcome')).toBeVisible();
+
+  // First-run setup: birth date and sex
+  await page.locator('.welcome #dob').fill('1985-04-12');
+  await expect(page.locator('.welcome')).toBeVisible();          // still asks for sex
+  await page.locator('.welcome #sex').selectOption('female');
+  await expect(page.locator('.welcome')).toHaveCount(0);
+
+  // Sample data: two lipid draws, a DEXA value, a VO2 max, a visit and a home reading
+  await page.evaluate(() => {
+    for (const [d, ldl, hdl] of [['2025-06-01', '128', '52'], ['2026-06-01', '104', '61']]) {
+      upsertResult('ldl-nih', d, ldl); upsertResult('hdl', d, hdl); upsertResult('glucose', d, '88');
+    }
+    upsertResult('dexa-body-fat-pct', '2026-03-01', '29.5'); upsertResult('vo2-max', '2026-03-01', '38');
+    upsertResult('home-weight', '2026-11-01', '140');
+    db.visits.push({ id: 'dentist-test', procId: 'dentist', date: '2026-05-01', result: 'Cleaning' });
+    save();
+  });
+
+  // Every tab renders
+  for (const v of TABS) {
+    await page.locator(`.tabs [data-view="${v}"]`).click();
+    await expect(page.locator('#view')).not.toBeEmpty();
+  }
+
+  // Fitness age card appears with a VO2 max on file
+  await page.locator('.tabs [data-view="body"]').click();
+  await expect(page.locator('.fitage')).toBeVisible();
+
+  // A test's detail window with its chart
+  await page.locator('.tabs [data-view="blood"]').click();
+  await page.locator('[data-test="ldl-nih"]').first().click();
+  await expect(page.locator('#modal .chart')).toBeVisible();
+  await page.locator('#modal [data-close]').first().click();
+
+  // Visit prep sheet, past dates and lab import windows open
+  await page.evaluate(() => openVisitSheet('wellness-exam'));
+  await expect(page.locator('#modal .sheet')).toBeVisible();
+  await page.evaluate(() => { document.getElementById('modal').close(); openPastDates(); });
+  await expect(page.locator('#pdform')).toBeVisible();
+  await page.evaluate(() => { document.getElementById('modal').close(); openLabImport(); });
+  await expect(page.locator('#dropzone')).toBeVisible();
+  await page.evaluate(() => document.getElementById('modal').close());
+
+  // Women's screenings shown for a female profile; men's hidden
+  await page.locator('.tabs [data-view="procs"]').click();
+  await expect(page.getByRole('heading', { name: 'Women’s health', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Men’s health', exact: true })).toHaveCount(0);
+
+  // Keyboard: clickable cards are reachable and open with Enter
+  await page.locator('.tabs [data-view="summary"]').click();
+  const card = page.locator('[role="button"][data-test]').first();
+  await card.focus(); await page.keyboard.press('Enter');
+  await expect(page.locator('#modal')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Data survives a reload (saved in the browser)
+  await page.reload();
+  expect(await page.evaluate(() => db.results.length)).toBeGreaterThanOrEqual(8);
+
+  // No sideways scrolling on any screen
+  for (const v of TABS) {
+    await page.locator(`.tabs [data-view="${v}"]`).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `overflow on ${v}`).toBe(true);
+  }
+
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('privacy page loads', async ({ page }) => {
+  await page.goto('/privacy.html');
+  await expect(page.getByRole('heading', { name: 'Privacy & Terms' })).toBeVisible();
+});

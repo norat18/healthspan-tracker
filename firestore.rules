@@ -9,6 +9,15 @@ service cloud.firestore {
         && request.resource.data.data is string
         && request.resource.data.data.size() < 900000;
     }
+    // Daily copies for "Restore an earlier version": owner can read, add a day's copy once, and delete old ones.
+    match /users/{uid}/history/{day} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['data', 'savedAtMs', 'schema'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 900000;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

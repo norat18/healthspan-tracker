@@ -9,3 +9,6 @@ reminders/node_modules/
 reminders/.cloudflare/
 reminders/dist/
 .env*
+node_modules/
+test-results/
+playwright-report/

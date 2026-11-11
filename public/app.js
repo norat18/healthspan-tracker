@@ -82,7 +82,7 @@ async function pushToCloud() {
     for (let attempt = 0; attempt < 4; attempt++) {
       const t = Math.max(Date.now(), cloudSync.savedAt + 1); db.settings.owner = cloudSync.user.uid;
       const res = await window.cloud.save(JSON.stringify(db), t, cloudSync.savedAt);
-      if (res.ok) { cloudSync.savedAt = t; cloudSync.pending = false; cloudSync.error = false; break; }
+      if (res.ok) { cloudSync.savedAt = t; cloudSync.pending = false; cloudSync.error = false; if (res.newDay) window.cloud.pruneHistory().catch(() => {}); break; }
       // Another device saved first: combine both versions, then try again.
       db = mergeDb(JSON.parse(res.conflict.data), db); cloudSync.savedAt = res.conflict.savedAtMs || 0;
       try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { }
@@ -90,6 +90,27 @@ async function pushToCloud() {
     }
   } catch (e) { cloudSync.error = true; console.warn('Save to account failed', e); }
   updateSyncBadge();
+}
+/* ---------- earlier versions ---------- */
+let historyCache = [];
+async function openHistory() {
+  open(`${head('Restore an earlier version')}<div class="m-b"><p class="muted small" style="margin-top:12px">Loading…</p></div>`);
+  try { historyCache = await window.cloud.history(); } catch (e) { historyCache = null; }
+  const count = h => { try { const d = JSON.parse(h.data); return `${d.results.length} results · ${d.visits.length} visits`; } catch (e) { return ''; } };
+  open(`${head('Restore an earlier version', 'Copies of your data from the start of each day you made changes')}
+  <div class="m-b">${historyCache === null ? '<p>Couldn’t load earlier versions — check your connection.</p>'
+    : historyCache.length ? `<p class="small" style="margin-top:12px">Restoring replaces your current data with that day’s copy. If you might want what you have now, <a href="#" data-export>download a copy</a> first.</p>
+    <ul class="list">${historyCache.map(h => `<li class="row"><div class="main"><div class="title">Start of ${fmt(h.day)}</div><div class="meta">${esc(count(h))}${h.savedAtMs ? ` · last saved ${new Date(h.savedAtMs).toLocaleString()}` : ''}</div></div><button class="btn" data-restoreday="${h.day}">Restore</button></li>`).join('')}</ul>`
+    : '<p class="small" style="margin-top:12px">No earlier versions yet. A copy is kept each day you make changes, starting tomorrow.</p>'}
+  </div>`);
+}
+function restoreDay(day) {
+  const h = (historyCache || []).find(x => x.day === day); if (!h) return;
+  if (!confirm(`Replace your current data with the copy from the start of ${fmt(day)}?`)) return;
+  const restored = JSON.parse(h.data);
+  restored.settings = { ...restored.settings, owner: cloudSync.user?.uid };
+  db = restored; applyImports(db); if (typeof applyAgeNorms === 'function') applyAgeNorms(db);
+  close(); save(`Restored your data from ${fmt(day)}`);
 }
 /* ---------- combining two versions (two devices saving at once) ---------- */
 const MERGE_KEYS = { tests: x => x.id, procedures: x => x.id, visits: x => x.id, events: x => x.id, meds: x => x.id, family: x => x.id,
@@ -470,6 +491,8 @@ function vData() {
       <div class="actions"><button class="btn" data-signout>Sign out</button><button class="btn danger" data-deleteaccount>Delete my account and data</button></div>`
       : `<p><b>Not signed in.</b> Your data is kept only in this browser. Sign in with Google to save it to your account and use it on other devices.</p><div class="actions"><button class="btn primary" data-signin>Sign in with Google</button></div>`}
     <p class="small muted" style="margin-top:12px">Healthspan Tracker doesn’t sell or share your data and has no ads or tracking. Signed-in data is stored in Google Firebase, locked so only your account can read or write it. Not medical advice. <a href="privacy.html">Privacy &amp; terms</a></p>
+    ${cloudSync.user ? `<p class="small" style="margin-top:12px"><b>Earlier versions:</b> a copy of your data is kept automatically for each of the last 30 days you made changes.</p>
+    <div class="actions"><button class="btn" data-history>Restore an earlier version</button></div>` : ''}
     <p class="small muted">Optional: download a copy to keep somewhere else, or restore one.</p>
     <div class="actions"><button class="btn" data-export>Download a copy (.json)</button>
     <label class="btn" style="display:inline-block">Restore a copy<input id="importfile" type="file" accept=".json,application/json" hidden></label></div>
@@ -691,7 +714,7 @@ function notifyIfDue() {
 
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-view],[data-go],[data-test],[data-proc],[data-logvisit],[data-addresults],[data-editdraw],[data-copy],[data-copylist],[data-close],[data-delresult],[data-deltest],[data-delvisit],[data-delproc],[data-newtest],[data-newproc],[data-ics],[data-export],[data-reset],[data-notify],[data-draw],[data-scanlog],[data-rview],[data-pastdates],[data-scanconfirm],[data-med],[data-event],[data-delfam],[data-delmed],[data-delevent],[data-visitsheet],[data-printsheet],[data-labimport],[data-signin],[data-signout],[data-acctmenu],[data-deleteaccount],[data-pushon],[data-pushoff],[data-pushtest]');
+  const el = e.target.closest('[data-view],[data-go],[data-test],[data-proc],[data-logvisit],[data-addresults],[data-editdraw],[data-copy],[data-copylist],[data-close],[data-delresult],[data-deltest],[data-delvisit],[data-delproc],[data-newtest],[data-newproc],[data-ics],[data-export],[data-reset],[data-notify],[data-draw],[data-scanlog],[data-rview],[data-pastdates],[data-scanconfirm],[data-med],[data-event],[data-delfam],[data-delmed],[data-delevent],[data-visitsheet],[data-printsheet],[data-labimport],[data-signin],[data-signout],[data-acctmenu],[data-deleteaccount],[data-pushon],[data-pushoff],[data-pushtest],[data-history],[data-restoreday]');
   if (!el) { if (e.target === modal) close(); return; }
   const D = el.dataset;
   if (D.view || D.go) { e.preventDefault(); view = D.view || D.go; close(); render(); scrollTo(0, 0); }
@@ -706,6 +729,8 @@ document.addEventListener('click', e => {
   else if (D.labimport !== undefined) openLabImport();
   else if (D.signin !== undefined) { if (!window.cloud) toast('Sign-in isn’t available right now — check your connection'); else window.cloud.signIn().catch(err => { console.error('Sign-in error', err); signInError(err); }); }
   else if (D.signout !== undefined || D.acctmenu !== undefined) { if (confirm(`Sign out of ${cloudSync.user?.email || 'your account'}? Your data stays saved in your account and is removed from this browser.`)) window.cloud.signOut(); }
+  else if (D.history !== undefined) openHistory();
+  else if (D.restoreday) restoreDay(D.restoreday);
   else if (D.pushon !== undefined) enablePush();
   else if (D.pushoff !== undefined) disablePush();
   else if (D.pushtest !== undefined) testPush();

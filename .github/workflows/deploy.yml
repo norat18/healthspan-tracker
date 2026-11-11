@@ -1,4 +1,4 @@
-# Deploy to Firebase Hosting (https://healthspantracker.web.app) on every push to main.
+# Test, then deploy to Firebase Hosting (https://healthspantracker.web.app) on every push to main.
 # healthspantracker.pages.dev mirrors Firebase Hosting, so it updates at the same time.
 # Auth is keyless: GitHub proves the run comes from this repository (OIDC) and Google lets it act as a
 # deploy-only service account (Workload Identity Federation). No secrets are stored in the repository.
@@ -7,28 +7,54 @@ name: Deploy
 on:
   push:
     branches: [main]
-    paths: ['public/**', 'firebase.json', 'firestore.rules', '.github/workflows/deploy.yml']
+    paths: ['public/**', 'firebase.json', 'firestore.rules', 'tests/**', 'reminders/src/**', 'package*.json', 'playwright.config.js', '.github/workflows/deploy.yml']
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: deploy
+  group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Unit tests (merging, lab import, reminder timing, no personal data)
+        run: npm run test:unit
+      - run: npx playwright install --with-deps chromium
+      - name: Browser tests (every screen on desktop and phone, no errors)
+        run: npm run test:browser
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/1088186330776/locations/global/workloadIdentityPools/github/providers/healthspan-tracker
           service_account: github-deploy@healthspan-tracker-app.iam.gserviceaccount.com
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
       - name: Deploy hosting and security rules
         run: npx -y firebase-tools@latest deploy --only hosting,firestore:rules --project healthspan-tracker-app --non-interactive
