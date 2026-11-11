@@ -108,6 +108,22 @@ window.onCloudUser = async user => {
   else if (was) { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.savedAt = 0; toast('Signed out'); }
   updateSyncBadge(); if (!modal.open) render();
 };
+/** Explain a sign-in problem in plain words, with the technical code for troubleshooting. */
+function signInError(err) {
+  const code = (err && err.code) || 'unknown';
+  const why = {
+    'auth/popup-closed-by-user': 'The sign-in window was closed before finishing.',
+    'auth/cancelled-popup-request': 'Another sign-in window was already open.',
+    'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow pop-ups for this site and try again.',
+    'auth/unauthorized-domain': 'This web address isn’t allowed to sign in yet.',
+    'auth/operation-not-allowed': 'Google sign-in isn’t switched on for this app yet.',
+    'auth/network-request-failed': 'The sign-in couldn’t reach Google. Check your connection, or turn off blockers for this site.',
+    'auth/internal-error': 'Google sign-in hit an internal error.',
+  }[code] || 'Something went wrong while signing in.';
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return toast(why);
+  open(`${head('Couldn’t sign in')}<div class="m-b"><p>${esc(why)}</p><p class="small muted">Error code: <code>${esc(code)}</code>${err && err.message ? `<br>${esc(err.message)}` : ''}</p>
+    <div class="actions"><button class="btn primary" data-signin>Try again</button><button class="btn" data-close>Close</button></div></div>`);
+}
 function updateSyncBadge() {
   const el = document.getElementById('sync'); if (!el) return;
   if (!cloudSync.ready) { el.innerHTML = ''; return; }
@@ -627,7 +643,7 @@ document.addEventListener('click', e => {
   else if (D.visitsheet) openVisitSheet(D.visitsheet);
   else if (D.printsheet !== undefined) printSheet();
   else if (D.labimport !== undefined) openLabImport();
-  else if (D.signin !== undefined) { if (!window.cloud) toast('Sign-in isn’t available right now — check your connection'); else window.cloud.signIn().catch(err => toast(err.code === 'auth/popup-closed-by-user' ? 'Sign-in cancelled' : 'Sign-in failed — try again')); }
+  else if (D.signin !== undefined) { if (!window.cloud) toast('Sign-in isn’t available right now — check your connection'); else window.cloud.signIn().catch(err => { console.error('Sign-in error', err); signInError(err); }); }
   else if (D.signout !== undefined || D.acctmenu !== undefined) { if (confirm(`Sign out of ${cloudSync.user?.email || 'your account'}? Your data stays saved in your account and is removed from this browser.`)) window.cloud.signOut(); }
   else if (D.deleteaccount !== undefined) { if (confirm('Permanently delete all your data from the cloud and sign out? This can’t be undone.')) window.cloud.remove().then(() => window.cloud.signOut()).then(() => toast('Your cloud data was deleted')).catch(() => toast('Couldn’t delete — try again')); }
   else if (D.scanconfirm) { const [pid, ans] = D.scanconfirm.split('|'); confirmScan(pid, ans === 'yes'); }
