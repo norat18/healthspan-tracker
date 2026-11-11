@@ -86,9 +86,11 @@ function improvement(t) {
 function nextCheck(t) {
   const id = t.kind === 'blood' ? 'wellness-exam' : /^vo2|resting-hr|rmr|bio-age/.test(t.id) ? 'vo2-max-test' : /^dexa/.test(t.id) ? 'dexa-scan' : null;
   const p = id && procById(id), s = p && schedule(p);
-  if (s && (s.state === 'never' || !s.last)) return `Book a ${short(p.name).toLowerCase()} to recheck`;
-  if (s && s.due) return s.state === 'overdue' ? `Your ${short(p.name).toLowerCase()} is overdue — book it to recheck` : `Recheck at your ${short(p.name).toLowerCase()} on ${fmt(s.due)}`;
-  return 'Bring it up at your next checkup';
+  if (!s) return 'Bring it up at your next checkup';
+  const n = short(p.name), name = /^[A-Z0-9]{2,}\b/.test(n) ? n : n[0].toLowerCase() + n.slice(1);   // keep “DEXA”, “VO2”
+  if (s.due && s.due >= today()) return `Recheck at your ${name} on ${fmt(s.due)}`;
+  if (s.state === 'overdue' && s.last) return `Your ${name} is overdue — book it to recheck`;
+  return `Book a ${name} to recheck`;
 }
 function insights() {
   const T = today(), wins = [], work = [];
