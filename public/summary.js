@@ -87,7 +87,7 @@ function nextCheck(t) {
   const id = t.kind === 'blood' ? 'wellness-exam' : /^vo2|resting-hr|rmr|bio-age/.test(t.id) ? 'vo2-max-test' : /^dexa/.test(t.id) ? 'dexa-scan' : null;
   const p = id && procById(id), s = p && schedule(p);
   if (!s) return 'Bring it up at your next checkup';
-  const n = short(p.name), name = /^[A-Z0-9]{2,}\b/.test(n) ? n : n[0].toLowerCase() + n.slice(1);   // keep “DEXA”, “VO2”
+  const name = short(p.name).split(' ').map(w => /^[A-Z0-9]{2,}$/.test(w) ? w : w.toLowerCase()).join(' ');   // keep “DEXA”, “VO2”
   if (s.due && s.due >= today()) return `Recheck at your ${name} on ${fmt(s.due)}`;
   if (s.state === 'overdue' && s.last) return `Your ${name} is overdue — book it to recheck`;
   return `Book a ${name} to recheck`;
