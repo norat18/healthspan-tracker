@@ -78,10 +78,47 @@ function persist() {
 }
 async function pushToCloud() {
   if (!cloudSync.user || !window.cloud) return;
-  try { const t = Date.now(); db.settings.owner = cloudSync.user.uid; await window.cloud.save(JSON.stringify(db), t); cloudSync.savedAt = t; cloudSync.pending = false; cloudSync.error = false; }
-  catch (e) { cloudSync.error = true; console.warn('Save to account failed', e); }
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const t = Math.max(Date.now(), cloudSync.savedAt + 1); db.settings.owner = cloudSync.user.uid;
+      const res = await window.cloud.save(JSON.stringify(db), t, cloudSync.savedAt);
+      if (res.ok) { cloudSync.savedAt = t; cloudSync.pending = false; cloudSync.error = false; break; }
+      // Another device saved first: combine both versions, then try again.
+      db = mergeDb(JSON.parse(res.conflict.data), db); cloudSync.savedAt = res.conflict.savedAtMs || 0;
+      try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { }
+      toast('Combined with changes from your other device'); if (!modal.open) render();
+    }
+  } catch (e) { cloudSync.error = true; console.warn('Save to account failed', e); }
   updateSyncBadge();
 }
+/* ---------- combining two versions (two devices saving at once) ---------- */
+const MERGE_KEYS = { tests: x => x.id, procedures: x => x.id, visits: x => x.id, events: x => x.id, meds: x => x.id, family: x => x.id,
+  draws: x => x.date, results: x => x.testId + '|' + x.date };
+/** Record a deletion so merging with another device doesn't bring the item back. */
+function tomb(kind, key) { db.deleted ||= {}; db.deleted[kind + ':' + key] = Date.now(); }
+function mergeDb(remote, local) {
+  const out = { ...remote, ...local, settings: { ...(remote.settings || {}), ...(local.settings || {}) } };
+  const deleted = { ...(remote.deleted || {}), ...(local.deleted || {}) }; out.deleted = deleted;
+  for (const [k, keyOf] of Object.entries(MERGE_KEYS)) {
+    const m = new Map(); (remote[k] || []).forEach(x => m.set(keyOf(x), x)); (local[k] || []).forEach(x => m.set(keyOf(x), x));
+    // Kept: anything this device has (it's current here); items only on the other device unless deleted on either.
+    const localKeys = new Set((local[k] || []).map(keyOf));
+    out[k] = [...m.entries()].filter(([key]) => localKeys.has(key) || !deleted[k + ':' + key]).map(([, v]) => v);
+    out[k].forEach(x => delete deleted[k + ':' + keyOf(x)]);   // present again → no longer deleted
+  }
+  out.settings.appliedImports = [...new Set([...(remote.settings?.appliedImports || []), ...(local.settings?.appliedImports || [])])];
+  return out;
+}
+/** Apply a newer copy saved from another device while this page is open. */
+function onRemoteChange(remote) {
+  if (!remote || (remote.savedAtMs || 0) <= cloudSync.savedAt) return;
+  if (cloudSync.pending) return;                       // our save will merge it
+  db = JSON.parse(remote.data); cloudSync.savedAt = remote.savedAtMs || 0;
+  applyImports(db); if (typeof applyAgeNorms === 'function') applyAgeNorms(db);
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { }
+  if (!modal.open) { render(); toast('Updated with changes from your other device'); }
+}
+window.addEventListener('online', () => { if (cloudSync.user && (cloudSync.pending || cloudSync.error)) pushToCloud(); });
 /** Load your account's copy. First sign-in: this browser's data moves into your account. */
 async function syncFromCloud(first) {
   if (!cloudSync.user || !window.cloud) return;
@@ -104,7 +141,7 @@ async function syncFromCloud(first) {
 }
 window.onCloudUser = async user => {
   const was = cloudSync.user; cloudSync.ready = true; cloudSync.user = user;
-  if (user) await syncFromCloud(!was);
+  if (user) { await syncFromCloud(!was); window.cloud.watch(onRemoteChange); }
   else if (was) { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.savedAt = 0; toast('Signed out'); }
   updateSyncBadge(); if (!modal.open) render();
 };
@@ -213,7 +250,21 @@ function draws(kind = 'blood') {
 function render() {
   $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   $('#view').innerHTML = ({ summary: () => vSummary(), myinfo: () => vMyInfo(), reminders: vReminders, blood: () => vBlood('blood'), body: () => vBlood('metric'), procs: vProcs, orders: vOrders, data: vData })[view]();
+  document.querySelectorAll('.tabs button').forEach(b => { if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  makeKeyboardFriendly(document.getElementById('view'));
 }
+/** Clickable rows and cards that aren't buttons: reachable with Tab, usable with Enter/Space, announced as buttons. */
+function makeKeyboardFriendly(root) {
+  root.querySelectorAll('[data-test],[data-proc],[data-go],[data-med],[data-event],[data-draw]').forEach(el => {
+    if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(el.tagName)) return;
+    el.tabIndex = 0; el.setAttribute('role', 'button');
+    if (!el.getAttribute('aria-label')) { const t = el.querySelector('.title,.t-name,.rc-name,h3'); if (t) el.setAttribute('aria-label', t.textContent.trim().replace(/\s+/g, ' ')); }
+  });
+}
+document.addEventListener('keydown', e => {
+  const el = e.target;
+  if ((e.key === 'Enter' || e.key === ' ') && el.getAttribute && el.getAttribute('role') === 'button' && !/^(BUTTON|A)$/.test(el.tagName)) { e.preventDefault(); el.click(); }
+});
 
 function vReminders() {
   const items = allItems();
@@ -416,9 +467,9 @@ function vData() {
   <h2>Your account &amp; privacy</h2>
   <div class="card"><div class="card-b">
     ${cloudSync.user ? `<p><b>✓ Signed in as ${esc(cloudSync.user.email || '')}.</b> Every change saves automatically to your account, so your data is the same on any device you sign in on. Only you can read it.</p>
-      <div class="actions"><button class="btn" data-signout>Sign out</button><button class="btn danger" data-deleteaccount>Delete my data from the cloud</button></div>`
+      <div class="actions"><button class="btn" data-signout>Sign out</button><button class="btn danger" data-deleteaccount>Delete my account and data</button></div>`
       : `<p><b>Not signed in.</b> Your data is kept only in this browser. Sign in with Google to save it to your account and use it on other devices.</p><div class="actions"><button class="btn primary" data-signin>Sign in with Google</button></div>`}
-    <p class="small muted" style="margin-top:12px">Healthspan Tracker doesn’t sell or share your data and has no ads or tracking. Signed-in data is stored in Google Firebase, locked so only your account can read or write it. Not medical advice.</p>
+    <p class="small muted" style="margin-top:12px">Healthspan Tracker doesn’t sell or share your data and has no ads or tracking. Signed-in data is stored in Google Firebase, locked so only your account can read or write it. Not medical advice. <a href="privacy.html">Privacy &amp; terms</a></p>
     <p class="small muted">Optional: download a copy to keep somewhere else, or restore one.</p>
     <div class="actions"><button class="btn" data-export>Download a copy (.json)</button>
     <label class="btn" style="display:inline-block">Restore a copy<input id="importfile" type="file" accept=".json,application/json" hidden></label></div>
@@ -432,7 +483,14 @@ function vData() {
 
 /* ---------- modals ---------- */
 const modal = $('#modal');
-function open(html) { $('#modal-body').innerHTML = html; if (!modal.open) modal.showModal(); }
+let lastFocus = null;
+function open(html) {
+  const body = document.getElementById('modal-body');
+  body.innerHTML = html; makeKeyboardFriendly(body);
+  const h = body.querySelector('h2'); if (h) { h.id = 'modal-title'; modal.setAttribute('aria-labelledby', 'modal-title'); }
+  if (!modal.open) { lastFocus = document.activeElement; modal.showModal(); }
+}
+modal.addEventListener('close', () => { if (lastFocus && document.contains(lastFocus)) lastFocus.focus(); });
 function close() { modal.close(); }
 const head = (title, sub) => `<div class="m-h"><div><h2 style="margin:0">${title}</h2>${sub ? `<div class="muted small">${sub}</div>` : ''}</div><button class="x" data-close aria-label="Close">×</button></div>`;
 
@@ -509,6 +567,8 @@ function openTest(id, kind = 'blood') {
 }
 function uniqueId(name, arr) { let b = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item', id = b, n = 2; while (arr.some(x => x.id === id)) id = `${b}-${n++}`; return id; }
 function upsertResult(testId, date, value) {
+  if (value === '' && db.results.some(r => r.testId === testId && r.date === date)) tomb('results', testId + '|' + date);
+  if (value !== '' && db.deleted) delete db.deleted['results:' + testId + '|' + date];
   db.results = db.results.filter(r => !(r.testId === testId && r.date === date));
   if (value !== '') db.results.push({ testId, date, value });
 }
@@ -638,15 +698,19 @@ document.addEventListener('click', e => {
   else if (D.pastdates !== undefined) openPastDates();
   else if (D.med) openMed(D.med);
   else if (D.event) openEvent(D.event);
-  else if (D.delfam) { if (confirm('Remove this family history entry?')) { db.family = db.family.filter(f => f.id !== D.delfam); save('Removed'); } }
-  else if (D.delmed) { if (confirm('Delete this item?')) { db.meds = db.meds.filter(m => m.id !== D.delmed); close(); save('Deleted'); } }
-  else if (D.delevent) { if (confirm('Delete this change?')) { db.events = db.events.filter(x => x.id !== D.delevent); close(); save('Deleted'); } }
+  else if (D.delfam) { if (confirm('Remove this family history entry?')) { tomb('family', D.delfam); db.family = db.family.filter(f => f.id !== D.delfam); save('Removed'); } }
+  else if (D.delmed) { if (confirm('Delete this item?')) { tomb('meds', D.delmed); db.meds = db.meds.filter(m => m.id !== D.delmed); close(); save('Deleted'); } }
+  else if (D.delevent) { if (confirm('Delete this change?')) { tomb('events', D.delevent); db.events = db.events.filter(x => x.id !== D.delevent); close(); save('Deleted'); } }
   else if (D.visitsheet) openVisitSheet(D.visitsheet);
   else if (D.printsheet !== undefined) printSheet();
   else if (D.labimport !== undefined) openLabImport();
   else if (D.signin !== undefined) { if (!window.cloud) toast('Sign-in isn’t available right now — check your connection'); else window.cloud.signIn().catch(err => { console.error('Sign-in error', err); signInError(err); }); }
   else if (D.signout !== undefined || D.acctmenu !== undefined) { if (confirm(`Sign out of ${cloudSync.user?.email || 'your account'}? Your data stays saved in your account and is removed from this browser.`)) window.cloud.signOut(); }
-  else if (D.deleteaccount !== undefined) { if (confirm('Permanently delete all your data from the cloud and sign out? This can’t be undone.')) window.cloud.remove().then(() => window.cloud.signOut()).then(() => toast('Your cloud data was deleted')).catch(() => toast('Couldn’t delete — try again')); }
+  else if (D.deleteaccount !== undefined) {
+    if (confirm('Permanently delete your account and all your health data? This can’t be undone.\n\nTip: Download a copy first if you might want it later.'))
+      window.cloud.removeAll().then(() => { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.user = null; cloudSync.savedAt = 0; render(); updateSyncBadge(); toast('Your account and data were deleted'); })
+        .catch(err => { console.error(err); toast(err.code === 'auth/popup-blocked' ? 'Allow pop-ups to confirm it’s you, then try again' : 'Couldn’t delete — try again'); });
+  }
   else if (D.scanconfirm) { const [pid, ans] = D.scanconfirm.split('|'); confirmScan(pid, ans === 'yes'); }
   else if (D.scanlog) openScanLog(D.scanlog);
   else if (D.rview) { db.settings.resultView = D.rview; save(); }
@@ -664,9 +728,9 @@ document.addEventListener('click', e => {
     copy(xs.map(([t]) => t.name).join('\n'), `Copied ${xs.length} tests`);
   } else if (D.copylist) { const ol = db.orderLists.find(o => o.id === D.copylist); copy(`${ol.title}\n` + ol.items.map(i => i.label).join('\n'), 'List copied'); }
   else if (D.delresult) { const [id, date] = D.delresult.split('|'); if (confirm(`Delete the ${fmt(date)} result?`)) { upsertResult(id, date, ''); save('Deleted'); openTest(id); } }
-  else if (D.deltest) { if (confirm('Delete this test and all its results?')) { db.tests = db.tests.filter(t => t.id !== D.deltest); db.results = db.results.filter(r => r.testId !== D.deltest); close(); save('Test deleted'); } }
-  else if (D.delvisit) { const v = db.visits.find(x => x.id === D.delvisit); if (confirm('Delete this visit?')) { db.visits = db.visits.filter(x => x !== v); save('Deleted'); openProc(v.procId); } }
-  else if (D.delproc) { if (confirm('Delete this item and its history?')) { db.procedures = db.procedures.filter(p => p.id !== D.delproc); db.visits = db.visits.filter(v => v.procId !== D.delproc); close(); save('Deleted'); } }
+  else if (D.deltest) { if (confirm('Delete this test and all its results?')) { tomb('tests', D.deltest); db.results.filter(r => r.testId === D.deltest).forEach(r => tomb('results', r.testId + '|' + r.date)); db.tests = db.tests.filter(t => t.id !== D.deltest); db.results = db.results.filter(r => r.testId !== D.deltest); close(); save('Test deleted'); } }
+  else if (D.delvisit) { const v = db.visits.find(x => x.id === D.delvisit); if (confirm('Delete this visit?')) { tomb('visits', v.id); db.visits = db.visits.filter(x => x !== v); save('Deleted'); openProc(v.procId); } }
+  else if (D.delproc) { if (confirm('Delete this item and its history?')) { tomb('procedures', D.delproc); db.visits.filter(v => v.procId === D.delproc).forEach(v => tomb('visits', v.id)); db.procedures = db.procedures.filter(p => p.id !== D.delproc); db.visits = db.visits.filter(v => v.procId !== D.delproc); close(); save('Deleted'); } }
   else if (D.ics !== undefined) { download('health-reminders.ics', icsText(), 'text/calendar'); toast('Calendar file downloaded — open it to add the reminders'); }
   else if (D.export !== undefined) { db.settings.lastBackup = today(); download(`health-tracker-backup-${today()}.json`, JSON.stringify(db, null, 1), 'application/json'); save('Backup exported'); }
   else if (D.reset !== undefined) { if (confirm('Erase all your results, visits and notes? This can’t be undone.')) { const keep = { dob: db.settings.dob, sex: db.settings.sex, owner: db.settings.owner }; db = fresh(); Object.assign(db.settings, keep); save('Started over'); } }
@@ -693,6 +757,8 @@ document.addEventListener('change', e => {
 
 render();
 updateSyncBadge();
+// Installable app + offline support
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 notifyIfDue();
 setInterval(notifyIfDue, 36e5);
 // pick up changes made on another device

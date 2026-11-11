@@ -5,17 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Healthspan Tracker</title>
 <meta name="description" content="Free, private tracker for blood tests, body composition, fitness, scans, screenings and vaccines — with reminders when each is due.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%99%A5%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#c43c3c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Healthspan">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
+<a class="skip" href="#view">Skip to content</a>
 <header class="top">
   <div class="brand">
     <span class="logo" aria-hidden="true">♥</span>
     <div><h1>Healthspan Tracker</h1><p class="sub">Your health, all in one place</p></div>
     <span id="sync" class="acct-area" role="status"></span>
   </div>
-  <nav class="tabs" role="tablist">
+  <nav class="tabs" aria-label="Sections">
     <button data-view="summary" class="active">Summary</button>
     <button data-view="reminders">Reminders</button>
     <button data-view="blood">Bloodwork</button>
@@ -25,18 +31,18 @@
     <button data-view="data">Data</button>
   </nav>
 </header>
-<main id="view"></main>
+<main id="view" tabindex="-1"></main>
 <dialog id="modal"><div id="modal-body"></div></dialog>
 <div id="toast" role="status"></div>
-<script src="catalog.js?v=3"></script>
-<script src="scans.js?v=3"></script>
-<script src="summary.js?v=3"></script>
-<script src="results.js?v=3"></script>
-<script src="pastdates.js?v=3"></script>
-<script src="myinfo.js?v=3"></script>
-<script src="visit.js?v=3"></script>
-<script src="labimport.js?v=3"></script>
-<script src="app.js?v=3"></script>
-<script type="module" src="cloud.js?v=3"></script>
+<script src="catalog.js?v=5"></script>
+<script src="scans.js?v=5"></script>
+<script src="summary.js?v=5"></script>
+<script src="results.js?v=5"></script>
+<script src="pastdates.js?v=5"></script>
+<script src="myinfo.js?v=5"></script>
+<script src="visit.js?v=5"></script>
+<script src="labimport.js?v=5"></script>
+<script src="app.js?v=5"></script>
+<script type="module" src="cloud.js?v=5"></script>
 </body>
 </html>

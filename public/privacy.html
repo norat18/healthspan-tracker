@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy & Terms · Healthspan Tracker</title>
+<meta name="description" content="How Healthspan Tracker stores and protects your health data, and the terms for using it.">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css?v=4">
+<style>
+  .doc { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  .doc h1 { font-size: 1.6rem; margin: 8px 0 4px; }
+  .doc h2 { margin-top: 32px; }
+  .doc p, .doc li { line-height: 1.6; }
+  .doc ul { padding-left: 20px; }
+  .doc .updated { color: var(--muted); font-size: .9rem; }
+  .doc .box { background: var(--accent-soft); border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+</style>
+</head>
+<body>
+<main class="doc">
+  <p><a href="./">← Back to Healthspan Tracker</a></p>
+  <h1>Privacy &amp; Terms</h1>
+  <p class="updated">Last updated November 10, 2026</p>
+
+  <div class="box"><b>In short:</b> your health data belongs to you. Without an account it never leaves your browser. With an account it’s stored in Google Firebase, locked so only you can read it. There are no ads, no analytics and no tracking, and you can delete everything at any time.</div>
+
+  <h2>What Healthspan Tracker stores</h2>
+  <ul>
+    <li><b>What you enter:</b> test results, scan and visit notes, screening and vaccine dates, supplements and medications, lifestyle changes, family history, home measurements, your date of birth and sex.</li>
+    <li><b>If you sign in with Google:</b> your Google account’s name, email address and profile picture (used only to show who is signed in), and a user ID from Firebase.</li>
+  </ul>
+  <p>We do not collect your location, contacts, device identifiers or browsing activity. There are no cookies for advertising or analytics.</p>
+
+  <h2>Where your data lives</h2>
+  <ul>
+    <li><b>Not signed in:</b> only in your web browser’s storage on that device. Clearing your browser data deletes it.</li>
+    <li><b>Signed in:</b> in a single private record in Google Cloud Firestore (United States), plus a copy in your browser for offline use. Data is encrypted in transit (HTTPS) and at rest by Google.</li>
+    <li>Security rules allow only your signed-in account to read or change your record. Firebase App Check helps block requests that don’t come from this app.</li>
+  </ul>
+
+  <h2>Who can see it</h2>
+  <p>Only you. Healthspan Tracker does not sell, rent, share or use your data for advertising, research or AI training. The service providers that run the app — Google (Firebase hosting, sign-in and database) and Cloudflare (website hosting) — process data only to provide those services. The app’s maintainer can technically administer the database but will not access your records except to investigate a problem you report, or if required by law.</p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li><b>Download a copy</b> of your data any time (Data tab → Download a copy).</li>
+    <li><b>Delete everything:</b> Data tab → <i>Delete my account and data</i> removes your record and your sign-in account permanently.</li>
+    <li><b>Email reminders</b> (if offered) are off unless you turn them on, and can be turned off from any email.</li>
+  </ul>
+
+  <h2>If something goes wrong</h2>
+  <p>If there is ever a breach of security that exposes your data, we will notify affected users and the U.S. Federal Trade Commission as required by the FTC Health Breach Notification Rule.</p>
+
+  <h2>Terms of use</h2>
+  <ul>
+    <li><b>Not medical advice.</b> Healthspan Tracker is a personal record-keeping tool. Targets, screening schedules and scores (such as fitness age) are general information from published guidelines and may not fit you. Always talk to a qualified clinician about your results and care.</li>
+    <li><b>No emergency use.</b> Don’t rely on the app for urgent or emergency health decisions.</li>
+    <li><b>Provided “as is”.</b> The app is free and open source (MIT License). We do our best to keep it working and your data safe, but can’t guarantee it will always be available or error-free. Keep your own copy of anything important.</li>
+    <li><b>Your responsibility:</b> keep your Google account secure, and only enter data you have the right to store.</li>
+    <li>We may update these terms; the date above shows the latest version.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions or problems: open an issue at <a href="https://github.com/norat18/healthspan-tracker/issues">github.com/norat18/healthspan-tracker</a>. Please don’t include personal health details in a public issue.</p>
+</main>
+</body>
+</html>

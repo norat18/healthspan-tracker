@@ -35,18 +35,30 @@ const SKIP = /^(normal|value|please|prediabetes|diabetes|\(note\)|testing method
 const isMarkerLine = l => { const toks = l.trim().split(/\s+/); return toks.length >= 2 && toks.every(t => t.length % 2 === 0 && t.slice(0, t.length / 2) === t.slice(t.length / 2)); };
 const VALUE = /^([<>]=?\s*)?-?\d+(\.\d+)?$/;
 const QUAL = /^(negative|positive|non-?reactive|reactive|detected|not detected|normal|abnormal)$/i;
-/** Parse plain text into [{testId, value, line}]. */
+/** "Normal range: 3.6 - 5.2 meq/L" or "Normal value: <75 nmol/L" → { low, high, text } */
+function parseRange(line) {
+  const m = line.match(/^(?:normal|reference)\s*(?:range|value|interval)s?\s*:?\s*(.+)$/i); if (!m) return null;
+  const t = m[1].trim(), unitless = t.replace(/\s*[a-zµ%\[\]\/._0-9]*[a-zµ%][a-zµ%\[\]\/._0-9]*$/i, '').trim();
+  let r = unitless.match(/^(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)$/);
+  if (r) return { low: +r[1], high: +r[2], text: `${r[1]}–${r[2]}` };
+  r = unitless.match(/^([<>]=?|≤|≥)\s*(-?\d+(?:\.\d+)?)$/);
+  if (r) return r[1].startsWith('<') || r[1] === '≤' ? { low: null, high: +r[2], text: `<${r[2]}` } : { low: +r[2], high: null, text: `>${r[2]}` };
+  if (/^[a-z ]+$/i.test(t)) return { low: null, high: null, text: t };     // e.g. "NREAC", "Negative"
+  return null;
+}
+/** Parse plain text into [{testId, value, line, range}]. */
 function parseLabText(text) {
   const idx = aliasIndex(), lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean), out = new Map();
   for (let i = 0; i < lines.length; i++) {
     const id = idx.get(normName(lines[i])); if (!id || out.has(id)) continue;
-    // a result name can be followed by the value on the same line ("LDL Cholesterol 111 mg/dL")
+    let range = null;
     for (let j = i + 1; j < Math.min(lines.length, i + 26); j++) {
       const l = lines[j];
       if (idx.has(normName(l))) break;
+      if (!range) range = parseRange(l);
       if (SKIP.test(l) || isMarkerLine(l)) continue;
       const v = l.replace(/\s*(mg\/dl|g\/dl|meq\/l|u\/l|ng\/ml|pg\/ml|nmol\/l|mg\/l|%|u\[iu\]\/ml|uiu\/ml|ml\/min.*)$/i, '').trim();
-      if (VALUE.test(v) || QUAL.test(v)) { out.set(id, { testId: id, value: v.replace(/\s+/g, ''), source: lines[i] }); break; }
+      if (VALUE.test(v) || QUAL.test(v)) { out.set(id, { testId: id, value: v.replace(/\s+/g, ''), source: lines[i], range }); break; }
     }
   }
   return [...out.values()];
@@ -56,7 +68,7 @@ async function pdfText(file) {
     await new Promise((res, rej) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js'; s.onload = res; s.onerror = () => rej(new Error('Could not load the PDF reader (needs internet)')); document.head.appendChild(s); });
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
   }
-  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise; const lines = [];
+  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false }).promise; const lines = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     // Keep the PDF's own reading order (works for two-column layouts like MyChart), breaking lines where the PDF does.
     let cur = '';
@@ -104,11 +116,12 @@ function renderLabReview() {
   const ok = labFound.filter(x => !x.error), bad = labFound.filter(x => x.error);
   $('#labreview').innerHTML = `${bad.map(b => `<div class="verdict bad" style="margin-top:10px"><b>${esc(b.file)}:</b> ${esc(b.error)}</div>`).join('')}
   ${ok.length ? `<h3>Found ${ok.length} result${ok.length === 1 ? '' : 's'} — check them</h3>
-  <form id="labsave"><div class="tablewrap"><table><thead><tr><th></th><th>Test</th><th>Value</th><th>Date</th><th>Last on file</th></tr></thead><tbody>
+  <form id="labsave"><div class="tablewrap"><table><thead><tr><th></th><th>Test</th><th>Value</th><th>Date</th><th>Lab normal range</th><th>Last on file</th></tr></thead><tbody>
   ${ok.map((x, i) => { const t = testById(x.testId), last = resultsFor(x.testId).at(-1), dup = last && last.date === x.date && last.value === x.value;
     return `<tr><td><input type="checkbox" name="use${i}" ${dup ? '' : 'checked'}></td><td><b>${esc(t.name)}</b><div class="small muted">read as “${esc(x.source)}” · ${esc(x.file)}</div></td>
       <td><input name="val${i}" value="${esc(x.value)}" style="width:90px"> <span class="small muted">${esc(t.unit)}</span></td>
       <td><input type="date" name="date${i}" value="${x.date || ''}" required></td>
+      <td class="small">${x.range ? `<label class="check"><input type="checkbox" name="rng${i}" checked> ${esc(x.range.text)}</label>` : '<span class="muted">—</span>'}</td>
       <td class="small muted">${last ? `${esc(last.value)} (${fmtShort(last.date)})${dup ? ' · already saved' : ''}` : '—'}</td></tr>`; }).join('')}
   </tbody></table></div>
   <div class="actions" style="margin-top:12px"><button class="btn primary">Save checked results</button><span class="small muted">Results already on file are unchecked.</span></div></form>` : ''}`;
@@ -117,6 +130,7 @@ function renderLabReview() {
     ok.forEach((x, i) => {
       if (!f.get('use' + i)) return; const v = (f.get('val' + i) || '').trim(), d = f.get('date' + i); if (!v || !d) return;
       upsertResult(x.testId, d, v); const t = testById(x.testId); if (t) t.nextDue = null; dates.add(d); n++;
+      if (t && x.range && f.get('rng' + i) && (x.range.low != null || x.range.high != null)) Object.assign(t, { labLow: x.range.low, labHigh: x.range.high, labText: x.range.text });
     });
     db.draws ||= []; dates.forEach(d => { if (!db.draws.some(x => x.date === d)) db.draws.push({ id: 'draw-' + d, date: d, note: 'Imported from lab report.' }); });
     close(); save(`Saved ${n} result${n === 1 ? '' : 's'}`);

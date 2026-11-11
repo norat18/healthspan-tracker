@@ -73,7 +73,7 @@ function vSummary() {
     <p>Track your blood tests, body and fitness results, scans, screenings and vaccines in one place — and get reminded when each is due. Start with two details so recommendations fit you:</p>
     <div class="grid2" style="max-width:520px"><label class="f">Date of birth<input id="dob" type="date"></label>
     <label class="f">Sex (for screenings &amp; fitness norms)<select id="sex"><option value="">Choose…</option><option value="female">Female</option><option value="male">Male</option></select></label></div>
-    <p class="small muted" style="margin-top:10px">${cloudSync.user ? 'Saved to your account.' : 'Your data stays in this browser unless you <a href="#" data-signin>sign in with Google</a> to save it across devices.'}</p></div></div>` : ''}
+    <p class="small muted" style="margin-top:10px">${cloudSync.user ? 'Saved to your account.' : 'Your data stays in this browser unless you <a href="#" data-signin>sign in with Google</a> to save it across devices. <a href="privacy.html">How your data is protected</a>'}</p></div></div>` : ''}
   <div class="sum-top">
     <div class="card attn"><div class="card-h"><h3>Needs attention</h3><span class="chip ${flagged.length + scanFlags.length ? 'overdue' : 'ok'}">${flagged.length + scanFlags.length}</span></div>
       <div class="card-b"><ul class="list">
@@ -108,7 +108,7 @@ function vSummary() {
       ${typeof SCANS !== 'undefined' ? `<p>${Object.keys(SCANS).map(id => { const st = scanStatus(id); return `<span class="pill ${st.tone || 'none'}">${esc(SCANS[id].title.replace(/\s*\(.*\)/, ''))}: ${esc(st.short)}</span>`; }).join(' ')}</p>` : ''}
       <p class="small muted">${procs.filter(x => x.s.state === 'overdue').length} overdue · ${procs.filter(x => x.s.state === 'never').length} not on file · ${procs.length} appointments, screenings &amp; vaccines</p></button>
   </div>
-  <p class="small muted" style="margin-top:20px">Targets are general guides from published sources and your lab reports. This is a personal tracker, not medical advice — talk to your doctor about any result.</p>`;
+  <p class="small muted" style="margin-top:20px">Targets are general guides from published sources and your lab reports. This is a personal tracker, not medical advice — talk to your doctor about any result. <a href="privacy.html">Privacy &amp; terms</a></p>`;
 }
 
 function scanTile(procId) {

@@ -297,3 +297,12 @@ code { font-size: .85em; background: var(--surface-2); padding: 1px 5px; border-
 .acct { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--accent-soft); color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; overflow: hidden; }
 .acct img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .welcome { margin-top: 20px; border-color: var(--accent); }
+
+
+/* accessibility */
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 8px; }
+.skip:focus { left: 16px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+[role="button"] { cursor: pointer; }
+main:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
