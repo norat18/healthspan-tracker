@@ -62,6 +62,11 @@ test('a new visitor can set up and use every screen without errors', async ({ pa
 
   // Keyboard: clickable cards are reachable and open with Enter
   await page.locator('.tabs [data-view="summary"]').click();
+  // Summary: score, what's going well, what needs work, coming up, areas; details folded away
+  await expect(page.locator('.sum-hero h2')).toBeVisible();
+  for (const h of ['✨ Going well', '🎯 Needs work', '📅 Coming up']) await expect(page.getByRole('heading', { name: h })).toBeVisible();
+  await expect(page.locator('.area')).toHaveCount(7);
+  await expect(page.locator('.sum-more .tiles').first()).toBeHidden();
   const card = page.locator('[role="button"][data-test]').first();
   await card.focus(); await page.keyboard.press('Enter');
   await expect(page.locator('#modal')).toBeVisible();

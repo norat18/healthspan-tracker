@@ -43,72 +43,178 @@ function tile(id) {
     <div class="t-date ${stale ? 'stale' : ''}">${fmt(r.date)}${stale ? ' · over a year old' : ''}${targetText(t) ? ` · target ${esc(targetText(t))}` : ''}</div></button>`;
 }
 
+/* ---------- insights: what's going well, what needs work ---------- */
+const AREAS = [
+  { key: 'heart', icon: '❤️', title: 'Heart & arteries', ids: ['ldl-nih', 'apob', 'lp-a', 'hs-crp', 'hdl', 'triglycerides', 'non-hdl'], scans: ['cimt', 'coronary-calcium-scan', 'coronary-ct-angiogram'], go: 'blood' },
+  { key: 'sugar', icon: '🍬', title: 'Blood sugar', ids: ['hemoglobin-a1c', 'fasting-insulin', 'glucose'], go: 'blood' },
+  { key: 'body', icon: '💪', title: 'Body composition', ids: ['dexa-body-fat-pct', 'dexa-visceral-fat', 'dexa-almi', 'dexa-ag-ratio'], go: 'body' },
+  { key: 'bone', icon: '🦴', title: 'Bones', ids: ['dexa-t-score', 'dexa-z-score'], go: 'body' },
+  { key: 'fit', icon: '🏃', title: 'Fitness', ids: ['vo2-max', 'resting-hr', 'home-rhr'], fitness: true, go: 'body' },
+  { key: 'organs', icon: '🧪', title: 'Organs & nutrients', ids: ['alt', 'ast', 'egfr', 'tsh', 'vitamin-d-total', 'ferritin', 'vitamin-b12', 'folate'], go: 'blood' },
+  { key: 'care', icon: '🩺', title: 'Checkups & vaccines', care: true, go: 'reminders' },
+];
+// How much each result matters when ranking what to work on (heart and blood sugar first).
+const WEIGHT = { 'ldl-nih': 3, 'apob': 3, 'lp-a': 3, 'hs-crp': 2.5, 'non-hdl': 2.5, 'hemoglobin-a1c': 3, 'fasting-insulin': 2.5, 'glucose': 2.5,
+  'dexa-visceral-fat': 2.5, 'dexa-body-fat-pct': 2, 'vo2-max': 2.5, 'resting-hr': 1.5, 'vitamin-d-total': 2, 'dexa-t-score': 2, 'hdl': 2, 'triglycerides': 2 };
+// Friendly words for a result that's on target.
+const WIN_COPY = {
+  'hemoglobin-a1c': ['🍬', 'Blood sugar control is excellent'], 'lp-a': ['🧬', 'Low inherited heart risk'], 'hs-crp': ['🔥', 'Low inflammation'],
+  'apob': ['❤️', 'Few artery-clogging particles'], 'hdl': ['❤️', 'Healthy “good” cholesterol'], 'triglycerides': ['🥑', 'Healthy blood fats'],
+  'ldl-nih': ['❤️', 'LDL cholesterol on target'], 'fasting-insulin': ['⚡', 'Insulin is low — your body handles sugar easily'], 'glucose': ['🍬', 'Healthy fasting blood sugar'],
+  'dexa-t-score': ['🦴', 'Strong bones'], 'dexa-almi': ['💪', 'Good muscle for your size'], 'dexa-ag-ratio': ['🍐', 'Healthy fat distribution'],
+  'vo2-max': ['🏃', 'Good cardio fitness'], 'egfr': ['🫘', 'Kidneys working well'], 'alt': ['🧪', 'Healthy liver'], 'ferritin': ['🩸', 'Healthy iron stores'],
+  'vitamin-b12': ['🥦', 'B12 on target'], 'tsh': ['🦋', 'Thyroid in range'], 'dexa-visceral-fat': ['🎯', 'Low visceral fat'], 'dexa-body-fat-pct': ['💪', 'Body fat on target'],
+};
+const RECENT_DAYS = 730;   // results older than 2 years don't count as current wins or problems
+const latestOf = id => { const t = testById(id); const r = t && resultsFor(id).at(-1); return t && r ? { t, r, f: flag(t, r.value), age: days(r.date, today()) } : null; };
+/** Distance outside the target, relative to the target's size (0 = in range). */
+function offBy(t, v) {
+  const n = num(v); if (n == null) return 0;
+  if (t.high != null && n > t.high) return (n - t.high) / Math.max(Math.abs(t.high), 0.1);
+  if (t.low != null && n < t.low) return (t.low - n) / Math.max(Math.abs(t.low), 0.1);
+  return 0;
+}
+/** Change since the previous result, if it moved toward (or into) the target. */
+function improvement(t) {
+  const rs = resultsFor(t.id).filter(r => num(r.value) != null); if (rs.length < 2 || (t.low == null && t.high == null)) return null;
+  const [p, r] = rs.slice(-2), before = offBy(t, p.value), now = offBy(t, r.value);
+  if (before <= 0 || now >= before * 0.85) return null;
+  const d = Math.abs(showNum(t, num(r.value)) - showNum(t, num(p.value)));
+  return { from: p, to: r, inRange: now === 0, delta: +d.toFixed(d < 10 ? 1 : 0), dir: num(r.value) < num(p.value) ? 'down' : 'up' };
+}
+/** When to recheck a result, in plain words. */
+function nextCheck(t) {
+  const id = t.kind === 'blood' ? 'wellness-exam' : /^vo2|resting-hr|rmr|bio-age/.test(t.id) ? 'vo2-max-test' : /^dexa/.test(t.id) ? 'dexa-scan' : null;
+  const p = id && procById(id), s = p && schedule(p);
+  if (s && (s.state === 'never' || !s.last)) return `Book a ${short(p.name).toLowerCase()} to recheck`;
+  if (s && s.due) return s.state === 'overdue' ? `Your ${short(p.name).toLowerCase()} is overdue — book it to recheck` : `Recheck at your ${short(p.name).toLowerCase()} on ${fmt(s.due)}`;
+  return 'Bring it up at your next checkup';
+}
+function insights() {
+  const T = today(), wins = [], work = [];
+  const fa = typeof fitnessAge === 'function' ? fitnessAge() : null;
+  if (fa && fa.diff < 0) wins.push({ icon: '🏃', text: `Fitness age ${fa.fa} — ${Math.abs(fa.diff)} years younger than you`, go: 'body', score: 10 });
+  // improvements
+  db.tests.filter(t => t.kind === 'blood' || t.kind === 'metric').forEach(t => {
+    const imp = improvement(t); if (!imp || days(imp.to.date, T) > RECENT_DAYS) return;
+    wins.push({ icon: imp.inRange ? '🎉' : '📈', test: t.id, score: 8 + (WEIGHT[t.id] || 1),
+      text: `${short(t.name)} ${imp.dir} ${imp.delta}${showUnit(t) && showUnit(t) !== '%' ? ' ' + showUnit(t) : imp.dir && showUnit(t) === '%' ? ' points' : ''} since ${fmt(imp.from.date)}${imp.inRange ? ' — now on target' : ' — moving the right way'}` });
+  });
+  // on-target highlights
+  Object.entries(WIN_COPY).forEach(([id, [icon, text]], i) => {
+    const x = latestOf(id); if (!x || x.f !== 'ok' || x.age > RECENT_DAYS || wins.some(w => w.test === id)) return;
+    wins.push({ icon, text, test: id, value: `${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim(), score: 6 - i * 0.1 + (WEIGHT[id] || 1) * 0.3 });
+  });
+  if (typeof SCANS !== 'undefined') Object.keys(SCANS).forEach(id => { const st = scanStatus(id); if (st.tone === 'ok') wins.push({ icon: '🩻', text: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: normal`, go: 'procs', score: 7 }); });
+  // needs work: results outside target
+  db.tests.filter(t => (t.kind === 'blood' || t.kind === 'metric') && !t.groupWith).forEach(t => {
+    const x = latestOf(t.id); if (!x || !['high', 'low'].includes(x.f)) return;
+    const stale = x.age > RECENT_DAYS, imp = improvement(t), lf = typeof labFlag === 'function' ? labFlag(t, x.r.value) : null;
+    const sev = (WEIGHT[t.id] || 1) * Math.min(1, 0.25 + offBy(t, x.r.value)) * (stale ? 0.6 : 1) * (lf === 'normal' ? 0.8 : 1) * (imp ? 0.85 : 1);
+    work.push({ test: t.id, score: sev, icon: x.f === 'high' ? '⬆️' : '⬇️',
+      title: `${short(t.name)} is ${x.f === 'high' ? 'above' : 'below'} target`,
+      value: `${showVal(t, x.r.value)} ${showUnit(t)}`.trim(), target: targetText(t),
+      why: TILE_PURPOSE[t.id] || t.description || '',
+      notes: [imp ? `Improving: ${imp.dir} ${imp.delta} since ${fmt(imp.from.date)}` : '', lf === 'normal' ? 'Within the lab’s normal range — your target is stricter' : '', stale ? `Last checked ${fmt(x.r.date)}` : ''].filter(Boolean),
+      next: nextCheck(t) });
+  });
+  if (typeof SCANS !== 'undefined') Object.keys(SCANS).forEach(id => {
+    const st = scanStatus(id); if (!['warn', 'bad'].includes(st.tone)) return;
+    work.push({ go: 'procs', score: st.tone === 'bad' ? 2.8 : 1.6, icon: '🩻', title: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: ${st.headline.toLowerCase()}`, why: procById(id)?.purpose || '', notes: [st.text], next: `Next scan: ${schedule(procById(id)).label.replace(/^Due /, '')}` });
+  });
+  // overdue care, as one item
+  const items = allItems(), overdue = items.filter(x => x.s.state === 'overdue');
+  if (overdue.length) work.push({ go: 'reminders', score: 1.2 + overdue.length * 0.15, icon: '📅', title: `${overdue.length} checkup${overdue.length === 1 ? '' : 's'} or test${overdue.length === 1 ? '' : 's'} overdue`,
+    why: overdue.slice(0, 4).map(x => short(x.i.name)).join(', ') + (overdue.length > 4 ? '…' : ''), notes: [], next: 'See Reminders to book them' });
+  else if (items.some(x => isProc(x.i) && x.s.last)) wins.push({ icon: '✅', text: 'All checkups and tests are up to date', go: 'reminders', score: 5 });
+  wins.sort((a, b) => b.score - a.score); work.sort((a, b) => b.score - a.score);
+  return { wins, work, overdue, items, fa };
+}
+function areaStatus(a, ins) {
+  if (a.care) {
+    const od = ins.overdue.length, known = ins.items.filter(x => isProc(x.i) && x.s.last).length;
+    return od ? { tone: 'work', text: `${od} overdue` } : known ? { tone: 'good', text: 'Up to date' } : { tone: 'none', text: 'Add past dates' };
+  }
+  const xs = a.ids.map(latestOf).filter(Boolean).filter(x => x.f !== 'none');
+  const scans = (a.scans || []).map(id => scanStatus(id)).filter(s => s.tone);
+  const off = xs.filter(x => ['high', 'low'].includes(x.f)).length + scans.filter(s => ['warn', 'bad'].includes(s.tone)).length;
+  const fa = a.fitness && ins.fa;
+  if (!xs.length && !scans.length && !fa) return { tone: 'none', text: a.ids.some(id => resultsFor(id).length) ? 'Results logged' : 'No results yet' };
+  if (off) return { tone: 'work', text: `${off} to work on` };
+  if (fa && fa.diff > 0) return { tone: 'work', text: `Fitness age ${fa.fa}` };
+  const stale = xs.length && xs.every(x => x.age > RECENT_DAYS);
+  return stale ? { tone: 'stale', text: 'Due for a recheck' } : { tone: 'good', text: fa ? `Fitness age ${fa.fa}` : 'Looking good' };
+}
+function scoreRing(pct, tone) {
+  const r = 52, c = 2 * Math.PI * r, off = c * (1 - pct / 100);
+  return `<svg class="ring ${tone}" viewBox="0 0 120 120" role="img" aria-label="${pct}% of your key numbers are on target">
+    <circle cx="60" cy="60" r="${r}" class="ring-bg"/><circle cx="60" cy="60" r="${r}" class="ring-fg" stroke-dasharray="${c}" stroke-dashoffset="${off}" transform="rotate(-90 60 60)"/>
+    <text x="60" y="58" text-anchor="middle" class="ring-num">${pct}%</text><text x="60" y="78" text-anchor="middle" class="ring-lbl">on target</text></svg>`;
+}
+
 function vSummary() {
-  const T = today(), dob = db.settings.dob;
-  const age = dob ? ageOn(dob, T) : null;
-  // flagged latest results across bloodwork, body & fitness
-  const flagged = db.tests.filter(t => t.kind !== 'scan').map(t => ({ t, r: resultsFor(t.id).at(-1) }))
-    .filter(x => x.r && ['high', 'low'].includes(flag(x.t, x.r.value)));
-  const scanFlags = typeof SCANS !== 'undefined' ? Object.keys(SCANS).map(id => ({ id, st: scanStatus(id) })).filter(x => ['warn', 'bad'].includes(x.st.tone)) : [];
-  const items = allItems();
-  const overdue = items.filter(x => x.s.state === 'overdue'), never = items.filter(x => x.s.state === 'never');
-  // upcoming, with same-day bloodwork grouped
-  const up = []; const seen = {};
-  items.filter(x => x.s.due && x.s.due >= T && !['never', 'complete'].includes(x.s.state)).sort((a, b) => a.s.due.localeCompare(b.s.due)).forEach(x => {
-    if (!isProc(x.i)) { const k = x.s.due; if (seen[k]) { seen[k].n++; return; } seen[k] = { blood: true, due: k, n: 1 }; up.push(seen[k]); }
+  const T = today(), dob = db.settings.dob, age = dob ? ageOn(dob, T) : null;
+  const first = (cloudSync.user?.displayName || '').split(' ')[0];
+  const ins = insights();
+  // Score: share of key results (current, with a target) that are on target, plus scans with results.
+  const key = AREAS.flatMap(a => a.ids || []).map(latestOf).filter(x => x && x.f !== 'none' && x.age <= RECENT_DAYS);
+  const scanStats = typeof SCANS !== 'undefined' ? Object.keys(SCANS).map(scanStatus).filter(s => s.tone) : [];
+  const okN = key.filter(x => x.f === 'ok').length + scanStats.filter(s => s.tone === 'ok').length, totalN = key.length + scanStats.length;
+  const pct = totalN ? Math.round(okN / totalN * 100) : 0;
+  const mood = !totalN ? null : pct >= 85 ? ['Crushing it 💪', 'good'] : pct >= 65 ? ['Mostly on track 👍', 'good'] : pct >= 45 ? ['Some areas to work on 🌱', 'mid'] : ['Plenty to work on — you’ve got this 🌱', 'work'];
+  const hasData = db.results.length > 0;
+  // coming up: next 3, with same-day bloodwork grouped
+  const up = [], seen = {};
+  ins.items.filter(x => x.s.due && x.s.due >= T && !['never', 'complete'].includes(x.s.state)).sort((a, b) => a.s.due.localeCompare(b.s.due)).forEach(x => {
+    if (!isProc(x.i)) { if (seen[x.s.due]) { seen[x.s.due].n++; return; } seen[x.s.due] = { blood: true, due: x.s.due, n: 1 }; up.push(seen[x.s.due]); }
     else up.push({ i: x.i, due: x.s.due });
   });
-  const kinds = { blood: db.tests.filter(t => kindOf(t) === 'blood'), metric: db.tests.filter(t => kindOf(t) === 'metric') };
-  const stat = list => { const latest = list.map(t => ({ t, r: resultsFor(t.id).at(-1) })); const has = latest.filter(x => x.r);
-    return { total: list.length, tested: has.length, ok: has.filter(x => flag(x.t, x.r.value) === 'ok').length,
-      off: has.filter(x => ['high', 'low'].includes(flag(x.t, x.r.value))).length, last: has.map(x => x.r.date).sort().at(-1) }; };
-  const sb = stat(kinds.blood), sm = stat(kinds.metric);
-  const procs = myProcs().map(i => ({ i, s: schedule(i) }));
-  return `
-  <div class="sum-head"><div><h2 style="margin:0">Health summary</h2>
-    <div class="muted small">As of ${fmt(T)}${age != null ? ` · age ${age} (next birthday ${fmt(nextBirthday(dob))})` : ''} · tap any result for its history</div></div>
-    <div class="legend small"><span><i class="dot ok"></i>In range</span><span><i class="dot bad"></i>Outside target</span><span><i class="dot none"></i>No target / not tested</span></div></div>
+  const never = ins.items.filter(x => x.s.state === 'never' && isProc(x.i)).length;
+  const wellness = procById('wellness-exam'), ws = wellness && schedule(wellness), visitSoon = ws && ws.due && days(T, ws.due) <= 60;
+  const winRow = w => `<li class="win" ${w.test ? `data-test="${w.test}"` : w.go ? `data-go="${w.go}"` : ''}><span class="w-ico" aria-hidden="true">${w.icon}</span><span class="w-txt">${esc(w.text)}</span>${w.value ? `<span class="w-val">${esc(w.value)}</span>` : ''}</li>`;
+  const workCard = (w, i) => `<li class="work" ${w.test ? `data-test="${w.test}"` : w.go ? `data-go="${w.go}"` : ''}>
+    <div class="wk-top"><span class="wk-n" aria-hidden="true">${i + 1}</span><div class="wk-main"><div class="wk-title">${esc(w.title)}${w.value ? ` <span class="wk-val">${esc(w.value)}</span>` : ''}</div>
+    ${w.target ? `<div class="wk-sub">Target ${esc(w.target)}</div>` : ''}${w.why ? `<div class="wk-sub">${esc(w.why)}</div>` : ''}</div></div>
+    ${w.notes.length ? `<div class="wk-notes">${w.notes.map(n => `<span>${esc(n)}</span>`).join('')}</div>` : ''}
+    <div class="wk-next">→ ${esc(w.next)}</div></li>`;
 
-  ${typeof sizeNote === 'function' && sizeNote().warn ? `<div class="hint pd-hint warn-hint" style="margin-bottom:12px"><div><b>Your data is ${sizeNote().pct}% of your account’s storage.</b> See Data → Storage to free up space.</div></div>` : ''}
+  return `
+  ${typeof sizeNote === 'function' && sizeNote().warn ? `<div class="hint pd-hint warn-hint" style="margin:16px 0 0"><div><b>Your data is ${sizeNote().pct}% of your account’s storage.</b> See Data → Storage to free up space.</div></div>` : ''}
   ${!db.settings.dob || !db.settings.sex ? `<div class="card welcome"><div class="card-b"><h2 style="margin:0 0 4px">Welcome to Healthspan Tracker</h2>
     <p>Track your blood tests, body and fitness results, scans, screenings and vaccines in one place — and get reminded when each is due. Start with two details so recommendations fit you:</p>
     <div class="grid2" style="max-width:520px"><label class="f">Date of birth<input id="dob" type="date" value="${db.settings.dob || ''}"></label>
     <label class="f">Sex (for screenings &amp; fitness norms)<select id="sex"><option value="">Choose…</option><option value="female" ${db.settings.sex === 'female' ? 'selected' : ''}>Female</option><option value="male" ${db.settings.sex === 'male' ? 'selected' : ''}>Male</option></select></label></div>
     <p class="small muted" style="margin-top:10px">${cloudSync.user ? 'Saved to your account.' : 'Your data stays in this browser unless you <a href="#" data-signin>sign in with Google</a> to save it across devices. <a href="privacy.html">How your data is protected</a>'}</p></div></div>` : ''}
-  <div class="sum-top">
-    <div class="card attn"><div class="card-h"><h3>Needs attention</h3><span class="chip ${flagged.length + scanFlags.length ? 'overdue' : 'ok'}">${flagged.length + scanFlags.length}</span></div>
-      <div class="card-b"><ul class="list">
-      ${flagged.map(({ t, r }) => { const lf = labFlag(t, r.value); return `<li class="row click" data-test="${t.id}"><div class="main"><div class="title">${esc(short(t.name))} <span class="v-${flag(t, r.value)}">${esc(showVal(t, r.value))} ${esc(showUnit(t))}</span>${lf ? ` <span class="labtag ${lf}">${lf === 'normal' ? 'Within lab normal' : 'Outside lab normal'}</span>` : ''}</div>
-        <div class="meta">${esc(FLAG_WORD[flag(t, r.value)])}: ${esc(targetText(t))}${t.labText ? ` · lab normal ${esc(labRangeText(t))}` : ''} · ${fmt(r.date)} · ${kindOf(t) === 'blood' ? 'Bloodwork' : 'Body & Fitness'}</div></div></li>`; }).join('')}
-      ${scanFlags.map(({ id, st }) => `<li class="row click" data-go="procs"><div class="main"><div class="title">${esc(SCANS[id].title)}</div><div class="meta">${esc(st.text)} · ${fmt(st.date)} · Imaging</div></div></li>`).join('')}
-      ${flagged.length + scanFlags.length ? '' : '<li class="row muted">Everything is in range.</li>'}
-      </ul></div></div>
-    <div class="card"><div class="card-h"><h3>Reminders</h3><a href="#" data-go="reminders" class="small">See all</a></div>
-      <div class="card-b">
-        <div class="mini-stats"><div class="${overdue.length ? 'bad' : ''}"><b>${overdue.length}</b><span>overdue</span></div><div class="info"><b>${never.length}</b><span>never done / not on file</span></div></div>
-        ${never.length ? `<p class="small" style="margin:8px 0 0">Many “not on file” items just need a past date. <a href="#" data-pastdates>Fill in past dates</a></p>` : ''}
-        ${overdue.length ? `<p class="small" style="margin:8px 0 0"><b>Overdue:</b> ${esc(overdue.slice(0, 6).map(x => short(x.i.name)).join(', '))}${overdue.length > 6 ? '…' : ''}</p>` : ''}
-        <div class="actions" style="margin-top:10px"><button class="btn" data-visitsheet="wellness-exam">Prepare for wellness exam</button><button class="btn" data-labimport>Import results</button></div>
-        <h4 class="small muted" style="margin:14px 0 4px">Coming up</h4>
-        <ul class="list">${up.slice(0, 5).map(u => `<li class="row ${u.i ? 'click' : ''}" ${u.i ? `data-proc="${u.i.id}"` : 'data-go="blood"'}><div class="main"><div class="title">${u.blood ? `Bloodwork · ${u.n} test${u.n > 1 ? 's' : ''}` : esc(u.i.name)}</div></div><span class="small muted">${fmt(u.due)}</span></li>`).join('')}</ul>
-      </div></div>
-  </div>
 
-  ${SUMMARY_GROUPS.map(g => `<section class="sum-group"><div class="sg-h"><h3>${esc(g.title)}</h3><span class="muted small">${esc(g.why)}</span></div>
-    <div class="tiles">${g.ids.map(tile).join('')}${(g.scans || []).map(scanTile).join('')}</div></section>`).join('')}
+  <section class="sum-hero ${mood ? mood[1] : 'none'}">
+    <div class="hero-txt">
+      <div class="hero-hi">${first ? `Hi ${esc(first)} 👋` : 'Your health at a glance'}</div>
+      <h2>${mood ? mood[0] : hasData ? 'Add results with targets to see your score' : 'Let’s get your health story started'}</h2>
+      <p>${totalN ? `<b>${okN} of ${totalN}</b> key results are on target${ins.work.length ? `, and there ${ins.work.length === 1 ? 'is <b>1 thing</b>' : `are <b>${Math.min(ins.work.length, 3)}${ins.work.length > 3 ? '+' : ''} things</b>`} worth your attention` : ' — nothing needs attention right now'}.`
+        : 'Import a lab, DEXA or fitness report, or add results by hand — your summary builds itself.'}</p>
+      <div class="muted small">${fmt(T)}${age != null ? ` · age ${age}` : ''}</div>
+    </div>
+    ${totalN ? scoreRing(pct, mood[1]) : `<div class="hero-start"><button class="btn primary" data-labimport>Import a report</button><button class="btn" data-pastdates>Add past checkups</button></div>`}
+  </section>
 
-  <h2>By section</h2>
-  <div class="sum-sections">
-    <button class="card sec" data-go="blood"><h3>Bloodwork</h3>
-      <p><b>${sb.ok}</b> in range · <b class="${sb.off ? 'v-high' : ''}">${sb.off}</b> outside target · <b>${sb.total - sb.tested}</b> never tested</p>
-      <p class="small muted">${sb.total} tests tracked · latest draw ${fmt(sb.last)}</p></button>
-    <button class="card sec" data-go="body"><h3>Body &amp; Fitness</h3>
-      <p><b>${sm.ok}</b> in range · <b class="${sm.off ? 'v-high' : ''}">${sm.off}</b> outside target · ${sm.tested - sm.ok - sm.off} no target</p>
-      <p class="small muted">${sm.total} measurements · latest scan ${fmt(sm.last)}</p></button>
-    <button class="card sec" data-go="procs"><h3>Imaging &amp; Checkups</h3>
-      ${typeof SCANS !== 'undefined' ? `<p>${Object.keys(SCANS).map(id => { const st = scanStatus(id); return `<span class="pill ${st.tone || 'none'}">${esc(SCANS[id].title.replace(/\s*\(.*\)/, ''))}: ${esc(st.short)}</span>`; }).join(' ')}</p>` : ''}
-      <p class="small muted">${procs.filter(x => x.s.state === 'overdue').length} overdue · ${procs.filter(x => x.s.state === 'never').length} not on file · ${procs.length} appointments, screenings &amp; vaccines</p></button>
-  </div>
+  ${hasData || ins.work.length ? `<div class="sum-cols">
+    <section class="card sum-card"><div class="card-h"><h3>✨ Going well</h3>${ins.wins.length > 5 ? `<span class="small muted">top 5 of ${ins.wins.length}</span>` : ''}</div>
+      <div class="card-b">${ins.wins.length ? `<ul class="wins">${ins.wins.slice(0, 5).map(winRow).join('')}</ul>` : '<p class="small muted">Wins will show up here as you add results.</p>'}</div></section>
+    <section class="card sum-card"><div class="card-h"><h3>🎯 Needs work</h3>${ins.work.length > 3 ? `<a href="#" class="small" data-go="blood">+${ins.work.length - 3} more</a>` : ''}</div>
+      <div class="card-b">${ins.work.length ? `<ol class="works">${ins.work.slice(0, 3).map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing needs attention right now.</p>'}</div></section>
+  </div>` : ''}
+
+  <section class="card sum-card" style="margin-top:12px"><div class="card-h"><h3>📅 Coming up</h3><a href="#" data-go="reminders" class="small">All reminders</a></div>
+    <div class="card-b"><ul class="list">${up.slice(0, 3).map(u => `<li class="row ${u.i ? 'click' : ''}" ${u.i ? `data-proc="${u.i.id}"` : 'data-go="blood"'}><div class="main"><div class="title">${u.blood ? `Bloodwork · ${u.n} test${u.n > 1 ? 's' : ''}` : esc(u.i.name)}</div></div><span class="small muted">${fmt(u.due)} · ${rel(days(T, u.due))}</span></li>`).join('') || '<li class="row muted">Nothing scheduled yet.</li>'}</ul>
+      <div class="actions" style="margin-top:10px">${visitSoon ? `<button class="btn primary" data-visitsheet="wellness-exam">Prepare for your ${esc(fmt(ws.due))} visit</button>` : ''}<button class="btn" data-labimport>Import results</button>${never ? `<button class="btn" data-pastdates>Add ${never} past date${never === 1 ? '' : 's'}</button>` : ''}</div></div></section>
+
+  <h3 class="areas-h">Your areas</h3>
+  <div class="areas">${AREAS.map(a => { const st = areaStatus(a, ins); return `<button class="area ${st.tone}" data-go="${a.go}"><span class="a-ico" aria-hidden="true">${a.icon}</span><span class="a-txt"><b>${esc(a.title)}</b><span>${esc(st.text)}</span></span><span class="a-dot" aria-hidden="true"></span></button>`; }).join('')}</div>
+
+  <details class="sum-more"><summary>See all key numbers</summary>
+    ${SUMMARY_GROUPS.map(g => `<section class="sum-group"><div class="sg-h"><h3>${esc(g.title)}</h3><span class="muted small">${esc(g.why)}</span></div>
+      <div class="tiles">${g.ids.map(tile).join('')}${(g.scans || []).map(scanTile).join('')}</div></section>`).join('')}
+  </details>
   <p class="small muted" style="margin-top:20px">Targets are general guides from published sources and your lab reports. This is a personal tracker, not medical advice — talk to your doctor about any result. <a href="privacy.html">Privacy &amp; terms</a></p>`;
 }
 

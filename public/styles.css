@@ -311,3 +311,61 @@ main:focus { outline: none; }
 .fill-report { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
 .fill-report .btn { white-space: nowrap; }
 #scanform .filled { outline: 2px solid var(--warn); outline-offset: 1px; }
+
+/* ---------- Summary: at a glance ---------- */
+.sum-hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 20px 0 12px; padding: 22px 24px;
+  border-radius: 16px; border: 1px solid var(--border); background: linear-gradient(135deg, var(--accent-soft), var(--surface) 70%); box-shadow: var(--shadow); }
+.sum-hero.good { background: linear-gradient(135deg, var(--ok-soft), var(--surface) 70%); }
+.sum-hero.mid { background: linear-gradient(135deg, var(--warn-soft), var(--surface) 70%); }
+.sum-hero.work { background: linear-gradient(135deg, var(--info-soft), var(--surface) 70%); }
+.hero-hi { font-weight: 600; color: var(--muted); }
+.sum-hero h2 { margin: 2px 0 6px; font-size: 1.6rem; }
+.sum-hero p { margin: 0 0 6px; }
+.hero-start { display: flex; flex-direction: column; gap: 8px; }
+.ring { width: 120px; height: 120px; flex: none; }
+.ring circle { fill: none; stroke-width: 11; }
+.ring-bg { stroke: var(--surface-2); }
+.ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .9s ease; }
+.ring.good .ring-fg { stroke: var(--ok); } .ring.mid .ring-fg { stroke: var(--warn); } .ring.work .ring-fg { stroke: var(--info); }
+.ring-num { font-size: 26px; font-weight: 700; fill: var(--text); }
+.ring-lbl { font-size: 11px; fill: var(--muted); }
+.sum-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.sum-card { margin: 0; }
+.sum-card h3 { margin: 0; font-size: 1.05rem; }
+.wins, .works { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.win { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--ok-soft); cursor: pointer; }
+.win:hover, .work:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.w-ico { font-size: 1.2rem; flex: none; }
+.w-txt { flex: 1; }
+.w-val { font-weight: 600; color: var(--ok); white-space: nowrap; font-size: .9rem; }
+.work { padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
+.wk-top { display: flex; gap: 10px; }
+.wk-n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 700;
+  background: var(--warn-soft); color: var(--warn); }
+.wk-title { font-weight: 600; }
+.wk-val { color: var(--warn); white-space: nowrap; }
+.wk-sub { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+.wk-notes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 34px; }
+.wk-notes span { font-size: .78rem; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
+.wk-next { margin: 8px 0 0 34px; font-size: .88rem; color: var(--accent); font-weight: 500; }
+.nothing { margin: 0; font-size: 1.05rem; }
+.areas-h { margin: 24px 0 10px; }
+.areas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 165px), 1fr)); gap: 8px; }
+.area { font: inherit; color: inherit; text-align: left; display: flex; align-items: center; gap: 10px; padding: 12px; cursor: pointer;
+  border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.area:hover { border-color: var(--accent); }
+.a-ico { font-size: 1.3rem; }
+.a-txt { flex: 1; display: flex; flex-direction: column; }
+.a-txt span { font-size: .85rem; color: var(--muted); }
+.a-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); flex: none; }
+.area.good .a-dot { background: var(--ok); } .area.work .a-dot { background: var(--warn); } .area.stale .a-dot { background: var(--info); }
+.area.good .a-txt span { color: var(--ok); } .area.work .a-txt span { color: var(--warn); }
+.sum-more { margin-top: 20px; }
+.sum-more > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 8px 0; }
+.sum-more .sum-group:first-of-type { margin-top: 8px; }
+@media (max-width: 560px) {
+  .sum-hero { flex-direction: column-reverse; align-items: flex-start; padding: 18px; }
+  .sum-hero h2 { font-size: 1.35rem; }
+  .ring { width: 96px; height: 96px; }
+}
+@media (prefers-reduced-motion: reduce) { .ring-fg { transition: none; } }
