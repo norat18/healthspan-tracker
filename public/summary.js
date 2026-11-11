@@ -120,12 +120,17 @@ function insights() {
   });
   if (typeof SCANS !== 'undefined') Object.keys(SCANS).forEach(id => {
     const st = scanStatus(id); if (!['warn', 'bad'].includes(st.tone)) return;
-    work.push({ go: 'procs', score: st.tone === 'bad' ? 2.8 : 1.6, icon: '🩻', title: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: ${st.headline.toLowerCase()}`, why: procById(id)?.purpose || '', notes: [st.text], next: `Next scan: ${schedule(procById(id)).label.replace(/^Due /, '')}` });
+    work.push({ go: 'procs', score: st.tone === 'bad' ? 2.8 : 0.75, icon: '🩻', title: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: ${st.headline.toLowerCase()}`, why: procById(id)?.purpose || '', notes: [st.text], next: `Next scan: ${schedule(procById(id)).label.replace(/^Due /, '')}` });
   });
   // overdue care, as one item
   const items = allItems(), overdue = items.filter(x => x.s.state === 'overdue');
-  if (overdue.length) work.push({ go: 'reminders', score: 1.2 + overdue.length * 0.15, icon: '📅', title: `${overdue.length} checkup${overdue.length === 1 ? '' : 's'} or test${overdue.length === 1 ? '' : 's'} overdue`,
-    why: overdue.slice(0, 4).map(x => short(x.i.name)).join(', ') + (overdue.length > 4 ? '…' : ''), notes: [], next: 'See Reminders to book them' });
+  if (overdue.length) {
+    const n = overdue.length, allBlood = overdue.every(x => !isProc(x.i)), s = n === 1 ? '' : 's';
+    work.push({ go: 'reminders', score: Math.min(1.5, 1 + n * 0.05), icon: '📅',
+      title: allBlood ? `${n} blood test${s} overdue` : `${n} checkup${s} or test${s} overdue`,
+      why: overdue.slice(0, 4).map(x => short(x.i.name)).join(', ') + (n > 4 ? '…' : ''), notes: [],
+      next: allBlood ? 'Ask for them at your next blood draw' : 'See Reminders to book them' });
+  }
   else if (items.some(x => isProc(x.i) && x.s.last)) wins.push({ icon: '✅', text: 'All checkups and tests are up to date', go: 'reminders', score: 5 });
   wins.sort((a, b) => b.score - a.score); work.sort((a, b) => b.score - a.score);
   return { wins, work, overdue, items, fa };
