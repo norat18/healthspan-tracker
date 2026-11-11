@@ -369,3 +369,16 @@ main:focus { outline: none; }
   .ring { width: 96px; height: 96px; }
 }
 @media (prefers-reduced-motion: reduce) { .ring-fg { transition: none; } }
+
+.works .work:nth-child(n+4) { display: none; }
+.works.open .work:nth-child(n+4) { display: list-item; animation: wk-in .25s ease; }
+@keyframes wk-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .works.open .work:nth-child(n+4) { animation: none; } }
+.link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+.area.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.area-panel { margin-top: 10px; scroll-margin-top: 130px; animation: wk-in .2s ease; }
+.area-panel h4 { margin: 4px 0 8px; font-size: .9rem; color: var(--muted); }
+.area-panel h4:not(:first-child) { margin-top: 16px; }
+@media (prefers-reduced-motion: reduce) { .area-panel { animation: none; } }
+.area-panel[hidden] { display: none; }

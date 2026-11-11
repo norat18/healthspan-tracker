@@ -67,6 +67,15 @@ test('a new visitor can set up and use every screen without errors', async ({ pa
   for (const h of ['✨ Going well', '🎯 Needs work', '📅 Coming up']) await expect(page.getByRole('heading', { name: h })).toBeVisible();
   await expect(page.locator('.area')).toHaveCount(7);
   await expect(page.locator('.sum-more .tiles').first()).toBeHidden();
+  // An area card opens its own panel on the Summary (no tab switch); clicking again closes it
+  await page.locator('[data-area="heart"]').click();
+  await expect(page.locator('#area-heart')).toBeVisible();
+  await expect(page.locator('.tabs [data-view="summary"]')).toHaveClass(/active/);
+  await page.locator('[data-area="heart"]').click();
+  await expect(page.locator('#area-heart')).toBeHidden();
+  // "+N more" in Needs work expands in place
+  const more = page.locator('[data-wkmore]');
+  if (await more.count()) { await more.click(); await expect(more).toHaveText('Show less'); await expect(page.locator('#works .work').nth(3)).toBeVisible(); await more.click(); }
   const card = page.locator('[role="button"][data-test]').first();
   await card.focus(); await page.keyboard.press('Enter');
   await expect(page.locator('#modal')).toBeVisible();

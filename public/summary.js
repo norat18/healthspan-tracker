@@ -122,7 +122,7 @@ function insights() {
   });
   if (typeof SCANS !== 'undefined') Object.keys(SCANS).forEach(id => {
     const st = scanStatus(id); if (!['warn', 'bad'].includes(st.tone)) return;
-    work.push({ go: 'procs', score: st.tone === 'bad' ? 2.8 : 0.75, icon: '🩻', title: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: ${st.headline.toLowerCase()}`, why: procById(id)?.purpose || '', notes: [st.text], next: `Next scan: ${schedule(procById(id)).label.replace(/^Due /, '')}` });
+    work.push({ go: 'procs', scan: id, score: st.tone === 'bad' ? 2.8 : 0.75, icon: '🩻', title: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: ${st.headline.toLowerCase()}`, why: procById(id)?.purpose || '', notes: [st.text], next: `Next scan: ${schedule(procById(id)).label.replace(/^Due /, '')}` });
   });
   // overdue care, as one item
   const items = allItems(), overdue = items.filter(x => x.s.state === 'overdue');
@@ -159,6 +159,50 @@ function scoreRing(pct, tone) {
     <text x="60" y="58" text-anchor="middle" class="ring-num">${pct}%</text><text x="60" y="78" text-anchor="middle" class="ring-lbl">on target</text></svg>`;
 }
 
+// Area cards open a panel under the grid with that area's items to work on and what's on target.
+let areaOpen = null;
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-area]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const key = b.dataset.area; areaOpen = areaOpen === key ? null : key;
+  document.querySelectorAll('[data-area]').forEach(x => { x.classList.toggle('sel', x.dataset.area === areaOpen); x.setAttribute('aria-expanded', x.dataset.area === areaOpen); });
+  document.querySelectorAll('.area-panel').forEach(x => { x.hidden = x.dataset.panel !== areaOpen; });
+  const panel = areaOpen && document.querySelector(`.area-panel[data-panel="${areaOpen}"]`);
+  if (panel) panel.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+});
+/** Everything for one area: items to work on (as in Needs work) and results on target. */
+function areaDetail(a, ins, workCard) {
+  const work = [], good = [];
+  if (a.care) {
+    ins.overdue.forEach(x => work.push(`<li class="row click" ${isProc(x.i) ? `data-proc="${x.i.id}"` : `data-test="${x.i.id}"`}><div class="main"><div class="title">${esc(x.i.name)}</div></div><span class="small v-high">${esc(x.s.label)}</span></li>`));
+    ins.items.filter(x => isProc(x.i) && x.s.last && x.s.state !== 'overdue').forEach(x => good.push(`<li class="row click" data-proc="${x.i.id}"><div class="main"><div class="title">✓ ${esc(x.i.name)}</div></div><span class="small muted">${esc(x.s.label)}</span></li>`));
+    const never = ins.items.filter(x => x.s.state === 'never' && isProc(x.i)).length;
+    return `${work.length ? `<h4>To work on</h4><ul class="list">${work.join('')}</ul>` : '<p class="nothing">🎉 Nothing overdue.</p>'}
+      ${good.length ? `<h4>Up to date</h4><ul class="list">${good.slice(0, 8).join('')}</ul>${good.length > 8 ? `<p class="small muted">and ${good.length - 8} more</p>` : ''}` : ''}
+      ${never ? `<p class="small" style="margin-top:8px"><a href="#" data-pastdates>Add ${never} past date${never === 1 ? '' : 's'}</a> so reminders are accurate.</p>` : ''}`;
+  }
+  const items = ins.work.filter(w => (w.test && a.ids.includes(w.test)) || (w.scan && (a.scans || []).includes(w.scan)));
+  const fa = a.fitness && ins.fa;
+  a.ids.map(latestOf).filter(x => x && x.f === 'ok').forEach(x => good.push(`<li class="win" data-test="${x.t.id}"><span class="w-ico" aria-hidden="true">✓</span><span class="w-txt">${esc(short(x.t.name))}${x.age > RECENT_DAYS ? ` <span class="small muted">· ${fmt(x.r.date)}</span>` : ''}</span><span class="w-val">${esc(`${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim())}</span></li>`));
+  (a.scans || []).filter(id => scanStatus(id).tone === 'ok').forEach(id => good.push(`<li class="win" data-go="procs"><span class="w-ico" aria-hidden="true">🩻</span><span class="w-txt">${esc(SCANS[id].title.replace(/\s*\(.*\)/, ''))}</span><span class="w-val">Normal</span></li>`));
+  if (fa) (fa.diff <= 0 ? good : []).push(`<li class="win" data-go="body"><span class="w-ico" aria-hidden="true">🏃</span><span class="w-txt">Fitness age</span><span class="w-val">${fa.fa} (you’re ${fa.age})</span></li>`);
+  const noTarget = a.ids.filter(id => resultsFor(id).length && latestOf(id)?.f === 'none').length;
+  if (!items.length && !good.length) return `<p class="small muted">No results with a target yet. <a href="#" data-labimport>Import a report</a> or add results in <a href="#" data-go="${a.go}">${a.go === 'body' ? 'Body &amp; Fitness' : 'Bloodwork'}</a>.</p>`;
+  return `${items.length ? `<h4>To work on</h4><ol class="works open">${items.map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing to work on here.</p>'}
+    ${fa && fa.diff > 0 ? `<p class="small">Your fitness age is <b>${fa.fa}</b>, ${fa.diff} year${fa.diff === 1 ? '' : 's'} older than you — raising VO2 max is the biggest lever.</p>` : ''}
+    ${good.length ? `<h4>On target</h4><ul class="wins">${good.join('')}</ul>` : ''}
+    ${noTarget ? `<p class="small muted">${noTarget} more result${noTarget === 1 ? '' : 's'} without a target.</p>` : ''}`;
+}
+// "+N more" in Needs work expands the list in place (remembered while the page is open).
+let workOpen = false;
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-wkmore]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const list = document.getElementById('works'); if (!list) return;
+  workOpen = !workOpen; list.classList.toggle('open', workOpen);
+  b.setAttribute('aria-expanded', workOpen); b.textContent = workOpen ? 'Show less' : `+${list.dataset.more} more`;
+  if (workOpen) list.children[3]?.focus?.();
+});
 function vSummary() {
   const T = today(), dob = db.settings.dob, age = dob ? ageOn(dob, T) : null;
   const first = (cloudSync.user?.displayName || '').split(' ')[0];
@@ -207,8 +251,8 @@ function vSummary() {
   ${hasData || ins.work.length ? `<div class="sum-cols">
     <section class="card sum-card"><div class="card-h"><h3>✨ Going well</h3>${ins.wins.length > 5 ? `<span class="small muted">top 5 of ${ins.wins.length}</span>` : ''}</div>
       <div class="card-b">${ins.wins.length ? `<ul class="wins">${ins.wins.slice(0, 5).map(winRow).join('')}</ul>` : '<p class="small muted">Wins will show up here as you add results.</p>'}</div></section>
-    <section class="card sum-card"><div class="card-h"><h3>🎯 Needs work</h3>${ins.work.length > 3 ? `<a href="#" class="small" data-go="blood">+${ins.work.length - 3} more</a>` : ''}</div>
-      <div class="card-b">${ins.work.length ? `<ol class="works">${ins.work.slice(0, 3).map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing needs attention right now.</p>'}</div></section>
+    <section class="card sum-card"><div class="card-h"><h3>🎯 Needs work</h3>${ins.work.length > 3 ? `<button type="button" class="link-btn small" data-wkmore aria-controls="works" aria-expanded="${workOpen}">${workOpen ? 'Show less' : `+${ins.work.length - 3} more`}</button>` : ''}</div>
+      <div class="card-b">${ins.work.length ? `<ol class="works${workOpen ? ' open' : ''}" id="works" data-more="${ins.work.length - 3}">${ins.work.map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing needs attention right now.</p>'}</div></section>
   </div>` : ''}
 
   <section class="card sum-card" style="margin-top:12px"><div class="card-h"><h3>📅 Coming up</h3><a href="#" data-go="reminders" class="small">All reminders</a></div>
@@ -216,7 +260,10 @@ function vSummary() {
       <div class="actions" style="margin-top:10px">${visitSoon ? `<button class="btn primary" data-visitsheet="wellness-exam">Prepare for your ${esc(fmt(ws.due))} visit</button>` : ''}<button class="btn" data-labimport>Import results</button>${never ? `<button class="btn" data-pastdates>Add ${never} past date${never === 1 ? '' : 's'}</button>` : ''}</div></div></section>
 
   <h3 class="areas-h">Your areas</h3>
-  <div class="areas">${AREAS.map(a => { const st = areaStatus(a, ins); return `<button class="area ${st.tone}" data-go="${a.go}"><span class="a-ico" aria-hidden="true">${a.icon}</span><span class="a-txt"><b>${esc(a.title)}</b><span>${esc(st.text)}</span></span><span class="a-dot" aria-hidden="true"></span></button>`; }).join('')}</div>
+  <div class="areas">${AREAS.map(a => { const st = areaStatus(a, ins); return `<button type="button" class="area ${st.tone}${areaOpen === a.key ? ' sel' : ''}" data-area="${a.key}" aria-controls="area-${a.key}" aria-expanded="${areaOpen === a.key}"><span class="a-ico" aria-hidden="true">${a.icon}</span><span class="a-txt"><b>${esc(a.title)}</b><span>${esc(st.text)}</span></span><span class="a-dot" aria-hidden="true"></span></button>`; }).join('')}</div>
+  ${AREAS.map(a => `<section class="card area-panel" id="area-${a.key}" data-panel="${a.key}" ${areaOpen === a.key ? '' : 'hidden'} aria-label="${esc(a.title)}">
+    <div class="card-h"><h3>${a.icon} ${esc(a.title)}</h3><a href="#" class="small" data-go="${a.go}">Open ${a.go === 'body' ? 'Body &amp; Fitness' : a.go === 'reminders' ? 'Reminders' : 'Bloodwork'} →</a></div>
+    <div class="card-b">${areaDetail(a, ins, workCard)}</div></section>`).join('')}
 
   <details class="sum-more"><summary>See all key numbers</summary>
     ${SUMMARY_GROUPS.map(g => `<section class="sum-group"><div class="sg-h"><h3>${esc(g.title)}</h3><span class="muted small">${esc(g.why)}</span></div>
