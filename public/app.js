@@ -66,7 +66,7 @@ function applyImports(d) {
 }
 let db = load();
 if (typeof applyAgeNorms === 'function') applyAgeNorms(db);
-let view = 'summary';
+let view = location.hash === '#reminders' ? 'reminders' : 'summary';
 /* ---------- saving: this browser, plus your account when signed in ---------- */
 const cloudSync = { ready: false, user: null, pending: false, error: false, savedAt: 0 };
 let putTimer = null;
@@ -172,6 +172,7 @@ function updateSyncBadge() {
 }
 function save(msg) {
   persist();
+  if (typeof syncPushDue === 'function') syncPushDue();
   render(); if (msg) toast(msg);
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -349,7 +350,7 @@ const KIND_INFO = {
 };
 const showPurpose = () => !db.settings.hidePurpose;
 const purposeOf = i => i.purpose || i.description || '';
-const short = n => { const s = n.replace(/\s*\(.*\)\s*/, '').trim(); return s.length < 4 ? n : s; };
+const short = n => { const s = n.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim(); return s.length < 4 ? n : s; };
 
 let bloodFilter = { q: '', src: 'all', flagged: false };
 function vBlood(kind) {
@@ -454,8 +455,7 @@ function vData() {
   <div class="card"><div class="card-b">
     <p>Download a calendar file with every upcoming test and appointment. Each event alerts you <b>a week before</b> and <b>on the day</b>. Open it to add it to Apple Calendar, Google Calendar or Outlook. Re-download after you log results so dates stay current.</p>
     <div class="actions"><button class="btn primary" data-ics>Download calendar (.ics)</button></div>
-    <p class="small muted" style="margin-top:14px">Desktop notifications: ${perm === 'granted' ? 'on — you’ll get a summary once a day when this page is open.' : perm === 'denied' ? 'blocked in this browser’s settings.' : perm === 'unsupported' ? 'not supported in this browser.' : 'off.'}</p>
-    ${perm === 'default' ? '<button class="btn" data-notify>Turn on notifications</button>' : ''}
+    ${typeof pushSection === 'function' ? pushSection() : ''}
     <label class="f" style="margin-top:14px;max-width:240px">Date of birth (for age-based screenings)<input id="dob" type="date" value="${db.settings.dob || ''}"></label>
     ${db.settings.dob ? `<p class="small muted" style="margin:6px 0 0">You’re ${ageOn(db.settings.dob, today())} · next birthday ${fmt(nextBirthday(db.settings.dob))}. Age-based screenings and fitness ratings use this.</p>` : ''}
     <label class="f" style="margin-top:14px;max-width:240px">Sex (for fitness-age comparison)<select id="sex"><option value="female" ${db.settings.sex !== 'male' ? 'selected' : ''}>Female</option><option value="male" ${db.settings.sex === 'male' ? 'selected' : ''}>Male</option></select></label>
@@ -691,7 +691,7 @@ function notifyIfDue() {
 
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-view],[data-go],[data-test],[data-proc],[data-logvisit],[data-addresults],[data-editdraw],[data-copy],[data-copylist],[data-close],[data-delresult],[data-deltest],[data-delvisit],[data-delproc],[data-newtest],[data-newproc],[data-ics],[data-export],[data-reset],[data-notify],[data-draw],[data-scanlog],[data-rview],[data-pastdates],[data-scanconfirm],[data-med],[data-event],[data-delfam],[data-delmed],[data-delevent],[data-visitsheet],[data-printsheet],[data-labimport],[data-signin],[data-signout],[data-acctmenu],[data-deleteaccount]');
+  const el = e.target.closest('[data-view],[data-go],[data-test],[data-proc],[data-logvisit],[data-addresults],[data-editdraw],[data-copy],[data-copylist],[data-close],[data-delresult],[data-deltest],[data-delvisit],[data-delproc],[data-newtest],[data-newproc],[data-ics],[data-export],[data-reset],[data-notify],[data-draw],[data-scanlog],[data-rview],[data-pastdates],[data-scanconfirm],[data-med],[data-event],[data-delfam],[data-delmed],[data-delevent],[data-visitsheet],[data-printsheet],[data-labimport],[data-signin],[data-signout],[data-acctmenu],[data-deleteaccount],[data-pushon],[data-pushoff],[data-pushtest]');
   if (!el) { if (e.target === modal) close(); return; }
   const D = el.dataset;
   if (D.view || D.go) { e.preventDefault(); view = D.view || D.go; close(); render(); scrollTo(0, 0); }
@@ -706,9 +706,12 @@ document.addEventListener('click', e => {
   else if (D.labimport !== undefined) openLabImport();
   else if (D.signin !== undefined) { if (!window.cloud) toast('Sign-in isn’t available right now — check your connection'); else window.cloud.signIn().catch(err => { console.error('Sign-in error', err); signInError(err); }); }
   else if (D.signout !== undefined || D.acctmenu !== undefined) { if (confirm(`Sign out of ${cloudSync.user?.email || 'your account'}? Your data stays saved in your account and is removed from this browser.`)) window.cloud.signOut(); }
+  else if (D.pushon !== undefined) enablePush();
+  else if (D.pushoff !== undefined) disablePush();
+  else if (D.pushtest !== undefined) testPush();
   else if (D.deleteaccount !== undefined) {
     if (confirm('Permanently delete your account and all your health data? This can’t be undone.\n\nTip: Download a copy first if you might want it later.'))
-      window.cloud.removeAll().then(() => { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.user = null; cloudSync.savedAt = 0; render(); updateSyncBadge(); toast('Your account and data were deleted'); })
+      (db.settings.pushOn ? disablePush(true) : Promise.resolve()).then(() => window.cloud.removeAll()).then(() => { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.user = null; cloudSync.savedAt = 0; render(); updateSyncBadge(); toast('Your account and data were deleted'); })
         .catch(err => { console.error(err); toast(err.code === 'auth/popup-blocked' ? 'Allow pop-ups to confirm it’s you, then try again' : 'Couldn’t delete — try again'); });
   }
   else if (D.scanconfirm) { const [pid, ans] = D.scanconfirm.split('|'); confirmScan(pid, ans === 'yes'); }

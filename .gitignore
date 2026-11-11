@@ -5,3 +5,7 @@ node_modules/
 .DS_Store
 .cloudflare/
 .wrangler/
+reminders/node_modules/
+reminders/.cloudflare/
+reminders/dist/
+.env*

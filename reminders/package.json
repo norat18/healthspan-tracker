@@ -1,0 +1,14 @@
+{
+  "name": "healthspan-reminders",
+  "private": true,
+  "type": "module",
+  "description": "Daily push-notification reminders for Healthspan Tracker (Cloudflare Worker + D1).",
+  "scripts": {
+    "deploy": "cf deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^2.0.0-beta.v.14",
+    "cf": "*",
+    "vite": "^8.3.8"
+  }
+}

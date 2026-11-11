@@ -1,9 +1,9 @@
 // Offline support: keep a copy of the app so it opens without a connection.
 // Pages and app files: try the network first (so updates show right away), fall back to the saved copy offline.
 // Firebase/pdf.js libraries: serve the saved copy and refresh it in the background.
-const CACHE = 'healthspan-v5';
-const SHELL = ['./', 'index.html', 'styles.css?v=5', 'catalog.js?v=5', 'scans.js?v=5', 'summary.js?v=5', 'results.js?v=5', 'pastdates.js?v=5',
-  'myinfo.js?v=5', 'visit.js?v=5', 'labimport.js?v=5', 'app.js?v=5', 'cloud.js?v=5', 'firebase-config.js', 'privacy.html', 'manifest.webmanifest',
+const CACHE = 'healthspan-v8';
+const SHELL = ['./', 'index.html', 'styles.css?v=8', 'catalog.js?v=8', 'scans.js?v=8', 'summary.js?v=8', 'results.js?v=8', 'pastdates.js?v=8',
+  'myinfo.js?v=8', 'push.js?v=8', 'visit.js?v=8', 'labimport.js?v=8', 'app.js?v=8', 'cloud.js?v=8', 'firebase-config.js', 'privacy.html', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
@@ -25,4 +25,21 @@ self.addEventListener('fetch', e => {
       return hit || net;
     }));
   }
+});
+
+// Reminder notifications: the push has no content; show the reminder text the app saved on this device.
+self.addEventListener('push', e => {
+  e.waitUntil((async () => {
+    let s = { title: 'Healthspan Tracker', body: 'You have health reminders — tap to see what’s due.' };
+    try { const r = await (await caches.open('healthspan-meta')).match('reminder-summary'); if (r) s = await r.json(); } catch (err) { }
+    await self.registration.showNotification(s.title, { body: s.body, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'healthspan-reminders', data: { url: './#reminders' } });
+  })());
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const c = all.find(w => new URL(w.url).origin === location.origin);
+    if (c) { await c.focus(); c.navigate && c.navigate('./#reminders'); } else await self.clients.openWindow('./#reminders');
+  })());
 });

@@ -1,6 +1,6 @@
 // Sign-in (Google) and per-person storage (one Firestore document per account: users/{uid}).
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check.js';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   deleteUser, reauthenticateWithPopup } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, deleteDoc, onSnapshot, runTransaction, serverTimestamp }
@@ -12,7 +12,7 @@ import { firebaseConfig, appCheckSiteKey } from './firebase-config.js';
 const ownHandler = /\.(web\.app|firebaseapp\.com|pages\.dev)$/.test(location.hostname);
 const app = initializeApp({ ...firebaseConfig, authDomain: ownHandler ? location.host : firebaseConfig.authDomain });
 // App Check: proves requests come from this app (blocks scripted abuse of the database).
-if (appCheckSiteKey && location.hostname !== 'localhost') initializeAppCheck(app, { provider: new ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+if (appCheckSiteKey && location.hostname !== 'localhost') initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
 const auth = getAuth(app);
 const store = getFirestore(app);
 const ref = () => doc(store, 'users', auth.currentUser.uid);
@@ -34,6 +34,7 @@ window.cloud = {
       throw err;
     }
   },
+  getIdToken: () => auth.currentUser.getIdToken(),
   signOut: () => { if (unwatch) { unwatch(); unwatch = null; } return signOut(auth); },
   /** { data: JSON string, savedAtMs } or null */
   async load() { const s = await getDoc(ref()); return s.exists() ? s.data() : null; },
