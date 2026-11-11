@@ -31,11 +31,11 @@ function openVisitSheet(procId) {
     <h3>1. Blood tests to ask for</h3>
     ${Object.keys(groups).length ? Object.entries(groups).map(([src, xs]) => `<h4>${src === 'Other' ? 'Also due' : 'Usually ordered from ' + esc(src)}</h4>${li(xs.map(({ t, s }) => {
       const r = resultsFor(t.id).at(-1), g = db.tests.filter(x => x.groupWith === t.id);
-      return `<li><span class="box"></span><b>${esc(t.name)}</b>${g.length ? ` (with ${esc(g.map(x => x.name).join(', '))})` : ''} — ${r ? `last ${esc(r.value)} ${esc(t.unit)} on ${fmt(r.date)}` : 'never tested'}</li>`; }))}`).join('') : '<p class="muted small">No blood tests due.</p>'}
+      return `<li><span class="box"></span><b>${esc(t.name)}</b>${g.length ? ` (with ${esc(g.map(x => x.name).join(', '))})` : ''} — ${r ? `last ${esc(showVal(t, r.value))} ${esc(showUnit(t))} on ${fmt(r.date)}` : 'never tested'}</li>`; }))}`).join('') : '<p class="muted small">No blood tests due.</p>'}
     ${optional.length ? `<p class="small"><b>Optional, if you want them:</b> ${esc(optional.join(', '))}.</p>` : ''}
 
     <h3>2. Results to discuss</h3>
-    ${li([...flagged.map(({ t, r }) => { const lf = labFlag(t, r.value); return `<li><b>${esc(t.name)}: ${esc(r.value)} ${esc(t.unit)}</b> (${fmt(r.date)}) — my target ${esc(t.optimalText)}${t.labText ? `; lab normal ${esc(t.labText)}${lf === 'normal' ? ' (within lab normal)' : ''}` : ''}</li>`; }),
+    ${li([...flagged.map(({ t, r }) => { const lf = labFlag(t, r.value); return `<li><b>${esc(t.name)}: ${esc(showVal(t, r.value))} ${esc(showUnit(t))}</b> (${fmt(r.date)}) — my target ${esc(targetText(t))}${t.labText ? `; lab normal ${esc(labRangeText(t))}${lf === 'normal' ? ' (within lab normal)' : ''}` : ''}</li>`; }),
       ...scans.map(({ id, st }) => `<li><b>${esc(SCANS[id].title)}</b> (${fmt(st.date)}) — ${esc(st.text)}</li>`)])}
 
     <h3>3. Other screenings &amp; vaccines due</h3>

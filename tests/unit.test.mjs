@@ -70,3 +70,39 @@ test('lab import reads values, ranges and the collection date', () => {
   assert.equal(found['hemoglobin-a1c'].value, '5.2');
   assert.equal(found['sti-chlamydia'].value, 'Negative');
 });
+
+/* ---- units (units.js) ---- */
+const u = { console }; u.window = u; vm.createContext(u);
+vm.runInContext(read('units.js').replace("'use strict';", '').replace(/^const /gm, 'var '), u);
+vm.runInContext('var db = { settings: { units: "si" } };', u);
+const T = id => ({ id, unit: 'mg/dL' });
+
+test('shows U.S. values in international units', () => {
+  assert.equal(u.showVal(T('ldl-nih'), '111'), '2.87');
+  assert.equal(u.showVal(T('glucose'), '90'), '5');
+  assert.equal(u.showVal({ id: 'hemoglobin-a1c', unit: '%' }, '5.6'), '38');
+  assert.equal(u.showVal(T('creatinine'), '0.68'), '60');
+  assert.equal(u.showVal({ id: 'home-weight', unit: 'lbs' }, '150'), '68');
+  assert.equal(u.showVal({ id: 'egfr' }, '>60'), '>60');          // no conversion defined
+  assert.equal(u.showUnit(T('ldl-nih')), 'mmol/L');
+});
+test('values typed in international units are stored in U.S. units', () => {
+  assert.equal(Math.round(+u.toStored(T('ldl-nih'), '2.87')), 111);
+  assert.equal(Math.round(+u.toStored(T('glucose'), '5,0')), 90);   // comma decimals
+  assert.equal(+(+u.toStored({ id: 'hemoglobin-a1c' }, '38')).toFixed(1), 5.6);
+});
+test('targets are shown in the chosen units', () => {
+  assert.equal(u.targetText({ id: 'ldl-nih', low: null, high: 100, optimalText: '<100 ideal' }), '<2.59 mmol/L');
+  assert.equal(u.targetText({ id: 'glucose', low: 70, high: 90, optimalText: '70–90' }), '3.9–5 mmol/L');
+});
+test('U.S. setting leaves everything unchanged', () => {
+  vm.runInContext('db.settings.units = "us"', u);
+  assert.equal(u.showVal(T('ldl-nih'), '111'), '111');
+  assert.equal(u.toStored(T('ldl-nih'), '111'), '111');
+  vm.runInContext('db.settings.units = "si"', u);
+});
+test('a lab report in mmol/L is recognized and converted', () => {
+  assert.equal(u.reportUnitSystem(T('ldl-nih'), 'Reference range: < 3.4 mmol/L'), 'si');
+  assert.equal(u.reportUnitSystem(T('ldl-nih'), 'Normal value: <160 mg/dL'), 'us');
+  assert.equal(Math.round(+u.siToStored(T('ldl-nih'), '2.87')), 111);
+});

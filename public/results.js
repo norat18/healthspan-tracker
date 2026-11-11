@@ -22,10 +22,10 @@ function rangeBar(t, rs) {
       ${L > 0 ? `<div class="rb-z bad" style="left:0;width:${L}%"></div>` : ''}
       <div class="rb-z ok" style="left:${L}%;width:${H - L}%"></div>
       ${H < 100 ? `<div class="rb-z bad" style="left:${H}%;width:${100 - H}%"></div>` : ''}
-      ${prev != null ? `<div class="rb-prev" style="left:${pct(prev)}%" title="Previous: ${esc(rs.at(-2).value)}"></div>` : ''}
+      ${prev != null ? `<div class="rb-prev" style="left:${pct(prev)}%" title="Previous: ${esc(showVal(t, rs.at(-2).value))}"></div>` : ''}
       ${last != null ? `<div class="rb-mark ${FLAG_TONE[flag(t, rs.at(-1).value)]}" style="left:${pct(last)}%"></div>` : ''}
     </div>
-    <div class="rb-ticks">${t.low != null ? `<span style="left:${L}%">${fmtNum(t.low)}</span>` : ''}${t.high != null ? `<span style="left:${H}%">${fmtNum(t.high)}</span>` : ''}</div>
+    <div class="rb-ticks">${t.low != null ? `<span style="left:${L}%">${fmtNum(showNum(t, t.low))}</span>` : ''}${t.high != null ? `<span style="left:${H}%">${fmtNum(showNum(t, t.high))}</span>` : ''}</div>
   </div>`;
 }
 
@@ -39,7 +39,7 @@ function miniTrend(t, rs) {
   const band = (t.low != null || t.high != null) ? (() => { const y1 = Y(t.high != null ? Math.min(t.high, mx) : mx), y2 = Y(t.low != null ? Math.max(t.low, mn) : mn); return y2 > y1 ? `<rect x="0" width="${W}" y="${y1}" height="${y2 - y1}" fill="var(--band)" rx="3"/>` : ''; })() : '';
   return `<svg class="mtrend" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-label="Trend">${band}
     <polyline points="${pts.map((p, i) => `${X(i)},${Y(p.v)}`).join(' ')}" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
-    ${pts.map((p, i) => { const f = FLAG_TONE[flag(t, p.r.value)]; return `<circle cx="${X(i)}" cy="${Y(p.v)}" r="${i === pts.length - 1 ? 3.6 : 2.6}" fill="${f === 'ok' ? 'var(--ok)' : f === 'bad' ? 'var(--bad)' : 'var(--accent)'}"><title>${fmt(p.r.date)}: ${esc(p.r.value)}</title></circle>`; }).join('')}</svg>`;
+    ${pts.map((p, i) => { const f = FLAG_TONE[flag(t, p.r.value)]; return `<circle cx="${X(i)}" cy="${Y(p.v)}" r="${i === pts.length - 1 ? 3.6 : 2.6}" fill="${f === 'ok' ? 'var(--ok)' : f === 'bad' ? 'var(--bad)' : 'var(--accent)'}"><title>${fmt(p.r.date)}: ${esc(showVal(t, p.r.value))}</title></circle>`; }).join('')}</svg>`;
 }
 
 /* ---------- cards ---------- */
@@ -47,16 +47,16 @@ function resultCard(t) {
   const rs = resultsFor(t.id), r = rs.at(-1), p = rs.at(-2);
   const why = showPurpose() && t.description ? `<div class="rc-why">${esc(t.description)}</div>` : '';
   if (!r) return `<button class="rcard none" data-test="${t.id}"><div class="rc-h"><div><div class="rc-name">${esc(t.name)}</div>${why}</div><span class="pill none">Not tested</span></div>
-    <div class="rc-foot">${t.optimalText ? 'Target ' + esc(t.optimalText) : ''}</div></button>`;
+    <div class="rc-foot">${targetText(t) ? 'Target ' + esc(targetText(t)) : ''}</div></button>`;
   const f = flag(t, r.value), tone = FLAG_TONE[f], v = num(r.value), pv = p ? num(p.value) : null;
-  const change = v != null && pv != null ? (v === pv ? 'No change' : `${v > pv ? '▲' : '▼'} ${fmtNum(Math.abs(v - pv))} since ${fmtShort(p.date)}`) : '';
+  const change = v != null && pv != null ? (v === pv ? 'No change' : `${v > pv ? '▲' : '▼'} ${fmtNum(Math.abs(showNum(t, v) - showNum(t, pv)))} since ${fmtShort(p.date)}`) : '';
   const isNum = v != null && /^[<>]?\s*-?\d/.test(String(r.value).trim());
   return `<button class="rcard ${tone}" data-test="${t.id}">
     <div class="rc-h"><div><div class="rc-name">${esc(t.name)}</div>${why}</div><span class="pill ${tone}">${f === 'none' ? (isNum ? 'Recorded' : esc(r.value)) : FLAG_WORD[f]}</span></div>
-    <div class="rc-main">${isNum ? `<div class="rc-val">${esc(r.value)}<small>${esc(t.unit)}</small></div>` : `<div class="rc-val text">${esc(r.value)}</div>`}${miniTrend(t, rs)}</div>
+    <div class="rc-main">${isNum ? `<div class="rc-val">${esc(showVal(t, r.value))}<small>${esc(showUnit(t))}</small></div>` : `<div class="rc-val text">${esc(r.value)}</div>`}${miniTrend(t, rs)}</div>
     ${rangeBar(t, rs)}
-    <div class="rc-foot">${fmt(r.date)}${change ? ` · <span class="rc-chg">${change}</span>` : ''}${r.note ? ` · ${esc(r.note)}` : ''}${(() => { const c = typeof changesFor === 'function' ? changesFor(t).filter(x => x.date <= r.date).at(-1) : null; return c ? `<br><span class="chg-note">◆ ${esc(c.title)} (${fmtShort(c.date)})</span>` : ''; })()}${t.optimalText ? `<br>Your target: ${esc(t.optimalText)}` : ''}
-      ${t.labText ? `<br>Lab normal: ${esc(t.labText)} ${(() => { const lf = labFlag(t, r.value); return lf ? `<span class="labtag ${lf}">${LAB_WORD[lf]}</span>` : ''; })()}` : ''}</div>
+    <div class="rc-foot">${fmt(r.date)}${change ? ` · <span class="rc-chg">${change}</span>` : ''}${r.note ? ` · ${esc(r.note)}` : ''}${(() => { const c = typeof changesFor === 'function' ? changesFor(t).filter(x => x.date <= r.date).at(-1) : null; return c ? `<br><span class="chg-note">◆ ${esc(c.title)} (${fmtShort(c.date)})</span>` : ''; })()}${targetText(t) ? `<br>Your target: ${esc(targetText(t))}` : ''}
+      ${t.labText ? `<br>Lab normal: ${esc(labRangeText(t))} ${(() => { const lf = labFlag(t, r.value); return lf ? `<span class="labtag ${lf}">${LAB_WORD[lf]}</span>` : ''; })()}` : ''}</div>
   </button>`;
 }
 function resultCards(kind, panels, tests) {

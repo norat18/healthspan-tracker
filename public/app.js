@@ -72,6 +72,13 @@ const cloudSync = { ready: false, user: null, pending: false, error: false, save
 let putTimer = null;
 const hasData = d => d && ((d.results || []).length || (d.visits || []).length || (d.meds || []).length || (d.family || []).length);
 /** Save without re-rendering: this browser now, your account a moment later. */
+/* ---------- storage size ---------- */
+const SIZE_LIMIT = 900000, SIZE_WARN = 700000;
+const dataSize = () => new Blob([JSON.stringify(db)]).size;
+function sizeNote() {
+  const n = dataSize(), kb = Math.round(n / 1024), pct = Math.round(n / SIZE_LIMIT * 100);
+  return { n, kb, pct, warn: n >= SIZE_WARN, full: n >= SIZE_LIMIT };
+}
 function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* account copy is the main one when signed in */ }
   if (cloudSync.user) { cloudSync.pending = true; updateSyncBadge(); clearTimeout(putTimer); putTimer = setTimeout(pushToCloud, 600); }
@@ -88,7 +95,10 @@ async function pushToCloud() {
       try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { }
       toast('Combined with changes from your other device'); if (!modal.open) render();
     }
-  } catch (e) { cloudSync.error = true; console.warn('Save to account failed', e); }
+  } catch (e) {
+    cloudSync.error = true; console.warn('Save to account failed', e);
+    if (sizeNote().full) toast('Your data is too large to save to your account — see Data → Storage');
+  }
   updateSyncBadge();
 }
 /* ---------- earlier versions ---------- */
@@ -404,9 +414,9 @@ function vBlood(kind) {
       const ts = tests.filter(t => t.panel === p); if (!ts.length) return '';
       return `<tr class="panel"><td colspan="${ds.length + (body ? 3 : 4)}"><span class="ph">${esc(p)}</span>${PANEL_INFO[p] ? `<span class="pd">${esc(PANEL_INFO[p])}</span>` : ''}</td></tr>` + ts.map(t => {
         const rs = resultsFor(t.id), s = schedule(t);
-        return `<tr class="t" data-test="${t.id}"><td class="name">${esc(t.name)} <span class="muted small">${esc(t.unit)}</span>${showPurpose() && t.description ? `<div class="purpose-line">${esc(t.description)}</div>` : ''}</td>
-          <td class="muted small">${esc(t.optimalText)}${t.labText ? `<div>Lab: ${esc(t.labText)}</div>` : ''}</td>
-          ${ds.map(d => { const r = rs.find(x => x.date === d.date); return `<td class="num ${r ? 'v-' + flag(t, r.value) : ''}" ${r?.note ? `title="${esc(r.note)}"` : ''}>${r ? esc(r.value) : '<span class="muted">·</span>'}</td>`; }).join('')}
+        return `<tr class="t" data-test="${t.id}"><td class="name">${esc(t.name)} <span class="muted small">${esc(showUnit(t))}</span>${showPurpose() && t.description ? `<div class="purpose-line">${esc(t.description)}</div>` : ''}</td>
+          <td class="muted small">${esc(targetText(t))}${t.labText ? `<div>Lab: ${esc(labRangeText(t))}</div>` : ''}</td>
+          ${ds.map(d => { const r = rs.find(x => x.date === d.date); return `<td class="num ${r ? 'v-' + flag(t, r.value) : ''}" ${r?.note ? `title="${esc(r.note)}"` : ''}>${r ? esc(showVal(t, r.value)) : '<span class="muted">·</span>'}</td>`; }).join('')}
           <td>${spark(t, rs)}</td>
           ${body ? '' : `<td>${chip(s)} <span class="small muted">${s.due ? fmtShort(s.due) : ''}</span></td>`}</tr>`;
       }).join('');
@@ -480,6 +490,8 @@ function vData() {
     <label class="f" style="margin-top:14px;max-width:240px">Date of birth (for age-based screenings)<input id="dob" type="date" value="${db.settings.dob || ''}"></label>
     ${db.settings.dob ? `<p class="small muted" style="margin:6px 0 0">You’re ${ageOn(db.settings.dob, today())} · next birthday ${fmt(nextBirthday(db.settings.dob))}. Age-based screenings and fitness ratings use this.</p>` : ''}
     <label class="f" style="margin-top:14px;max-width:240px">Sex (for fitness-age comparison)<select id="sex"><option value="female" ${db.settings.sex !== 'male' ? 'selected' : ''}>Female</option><option value="male" ${db.settings.sex === 'male' ? 'selected' : ''}>Male</option></select></label>
+    <label class="f" style="margin-top:14px;max-width:240px">Units for lab results &amp; weight<select id="units"><option value="us" ${db.settings.units !== 'si' ? 'selected' : ''}>U.S. (mg/dL, lbs)</option><option value="si" ${db.settings.units === 'si' ? 'selected' : ''}>International (mmol/L, kg)</option></select></label>
+    <p class="small muted" style="margin:4px 0 0">Results convert automatically; enter new results in the units you choose.</p>
     <label class="f" style="margin-top:14px;max-width:240px">“Due soon” window (days)<input id="soon" type="number" min="7" max="365" value="${db.settings.soonDays}"></label>
   </div></div>
   <h2>Past dates</h2>
@@ -497,6 +509,10 @@ function vData() {
     <div class="actions"><button class="btn" data-export>Download a copy (.json)</button>
     <label class="btn" style="display:inline-block">Restore a copy<input id="importfile" type="file" accept=".json,application/json" hidden></label></div>
   </div></div>
+  ${(() => { const z = sizeNote(); return `<h2>Storage</h2>
+  <div class="card"><div class="card-b"><p class="small">Your data uses <b>${z.kb} KB</b> of the ${Math.round(SIZE_LIMIT / 1024)} KB each account can store (${z.pct}%).</p>
+    <div class="rb-track" style="max-width:420px"><div class="rb-z ${z.warn ? 'bad' : 'ok'}" style="left:0;width:${Math.min(100, z.pct)}%;opacity:.6"></div></div>
+    ${z.warn ? `<p class="small" style="margin-top:8px"><b>${z.full ? 'Your account is full.' : 'Getting close to the limit.'}</b> Download a copy, then remove old notes or results you no longer need (for example very old lab draws).</p>` : ''}</div></div>`; })()}
   <h2>Start over</h2>
   <div class="card"><div class="card-b">
     <p class="small">Erase all your results, visits and notes and start with an empty tracker.</p>
@@ -535,9 +551,9 @@ function chart(t, rs) {
     <text x="${X(c.date) + 4}" y="${T + 10 + i * 13}" style="fill:var(--info);font-weight:600">${esc(c.title.length > 28 ? c.title.slice(0, 27) + '…' : c.title)}</text>`).join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t.name)} over time">${marks}
     ${t.low != null || t.high != null ? `<rect class="band" x="${L}" width="${W - L - R}" y="${bandTop}" height="${Math.max(0, bandBot - bandTop)}"/>` : ''}
-    ${ticks.map(v => `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v.toFixed(dec)}</text>`).join('')}
+    ${ticks.map(v => `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${(+showNum(t, v).toFixed(dec + 1)).toString()}</text>`).join('')}
     <polyline class="line" points="${pts.map(p => `${X(p.d)},${Y(p.v)}`).join(' ')}"/>
-    ${pts.map(p => { const f = flag(t, p.raw); return `<circle cx="${X(p.d)}" cy="${Y(p.v)}" r="4.5" fill="${f === 'ok' ? 'var(--ok)' : f === 'none' ? 'var(--accent)' : 'var(--bad)'}"><title>${fmt(p.d)}: ${esc(p.raw)} ${esc(t.unit)}</title></circle>
+    ${pts.map(p => { const f = flag(t, p.raw); return `<circle cx="${X(p.d)}" cy="${Y(p.v)}" r="4.5" fill="${f === 'ok' ? 'var(--ok)' : f === 'none' ? 'var(--accent)' : 'var(--bad)'}"><title>${fmt(p.d)}: ${esc(showVal(t, p.raw))} ${esc(showUnit(t))}</title></circle>
       <text x="${X(p.d)}" y="${H - 8}" text-anchor="${pts.length === 1 ? 'middle' : p === pts[0] ? 'start' : p === pts.at(-1) ? 'end' : 'middle'}">${fmtShort(p.d)}</text>`; }).join('')}
   </svg>${t.low != null || t.high != null ? '<div class="small muted">Shaded area = your target range' + (inRange.length ? ' · dashed purple line = a change you made' : '') + '</div>' : ''}
   ${chg.length ? `<div class="changes"><b class="small">Changes that may affect this result</b>${chg.map(c => `<div class="small"><span class="muted">${fmt(c.date)}</span> · ${esc(c.title)}${c.detail ? ` — <span class="muted">${esc(c.detail)}</span>` : ''}</div>`).join('')}</div>` : ''}`;
@@ -550,11 +566,11 @@ function openTest(id, kind = 'blood') {
   open(`${head(id ? esc(t.name) : 'New test', id ? `${esc(t.panel)}${t.orderFrom ? ' · Order from ' + esc(t.orderFrom) : ''}` : '')}
   <div class="m-b">
     ${id ? `<p>${esc(t.description)}</p>
-    <p class="small">${t.kind === 'metric' ? '' : chip(s) + ' ' + esc(s.label) + ' · '}Your target: <b>${esc(t.optimalText || '—')}</b>${t.labText ? ` · Lab normal range: <b>${esc(t.labText)}</b>` : ''}${t.notes ? `<br><span class="muted">Note: ${esc(t.notes)}</span>` : ''}</p>
+    <p class="small">${t.kind === 'metric' ? '' : chip(s) + ' ' + esc(s.label) + ' · '}Your target: <b>${esc(targetText(t) || '—')}</b>${t.labText ? ` · Lab normal range: <b>${esc(labRangeText(t))}</b>` : ''}${t.notes ? `<br><span class="muted">Note: ${esc(t.notes)}</span>` : ''}</p>
     ${chart(t, rs)}
     <h3>History</h3>
-    ${rs.length ? `<ul class="list">${[...rs].reverse().map(r => { const f = flag(t, r.value); return `<li class="row"><div class="main"><span class="title v-${f}">${esc(r.value)} ${esc(t.unit)}</span> <span class="meta">· ${fmt(r.date)}${r.note ? ' · ' + esc(r.note) : ''}</span></div><span class="chip ${f}">${FLAG_LABEL[f]}</span><button class="btn link danger" data-delresult="${t.id}|${r.date}">Delete</button></li>`; }).join('')}</ul>` : '<p class="muted small">No results yet.</p>'}
-    <form id="addone" class="toolbar"><input type="date" name="date" value="${today()}" required><input name="value" placeholder="Value${t.unit ? ' (' + esc(t.unit) + ')' : ''}" required style="width:160px"><button class="btn primary">Add result</button></form>` : ''}
+    ${rs.length ? `<ul class="list">${[...rs].reverse().map(r => { const f = flag(t, r.value); return `<li class="row"><div class="main"><span class="title v-${f}">${esc(showVal(t, r.value))} ${esc(showUnit(t))}</span> <span class="meta">· ${fmt(r.date)}${r.note ? ' · ' + esc(r.note) : ''}</span></div><span class="chip ${f}">${FLAG_LABEL[f]}</span><button class="btn link danger" data-delresult="${t.id}|${r.date}">Delete</button></li>`; }).join('')}</ul>` : '<p class="muted small">No results yet.</p>'}
+    <form id="addone" class="toolbar"><input type="date" name="date" value="${today()}" required><input name="value" placeholder="Value${showUnit(t) ? ' (' + esc(showUnit(t)) + ')' : ''}" required style="width:160px"><button class="btn primary">Add result</button></form>` : ''}
     <h3>${id ? 'Settings' : 'Details'}</h3>
     <form id="testform" class="grid2">
       <label class="f">Name<input name="name" value="${esc(t.name)}" required></label>
@@ -574,7 +590,7 @@ function openTest(id, kind = 'blood') {
   </div>`);
   $('#addone')?.addEventListener('submit', e => {
     e.preventDefault(); const f = new FormData(e.target);
-    upsertResult(t.id, f.get('date'), f.get('value').trim()); t.nextDue = null;
+    upsertResult(t.id, f.get('date'), toStored(t, f.get('value'))); t.nextDue = null;
     save('Result added'); openTest(t.id);
   });
   $('#testform').addEventListener('submit', e => {
@@ -607,15 +623,17 @@ function openResults(src, date, kind = 'blood') {
     ${kind === 'blood' ? `<label class="f" style="margin-top:12px">Notes (fasting, diet changes, supplements…)<textarea name="__note">${esc(d?.note || '')}</textarea></label>` : ''}
     ${panels.map(p => `<h3>${esc(p)}</h3>${tests.filter(t => t.panel === p).map(t => {
       const cur = db.results.find(r => r.testId === t.id && r.date === date), prev = resultsFor(t.id).filter(r => r.date < date).at(-1);
-      return `<div class="entry"><div><div>${esc(t.name)} <span class="u">${esc(t.unit)}</span></div><div class="u">Optimal ${esc(t.optimalText || '—')}${prev ? ` · last ${esc(prev.value)}` : ''}</div></div>
-      <input name="${t.id}" value="${esc(cur?.value || '')}" inputmode="decimal" aria-label="${esc(t.name)}"></div>`;
+      return `<div class="entry"><div><div>${esc(t.name)} <span class="u">${esc(showUnit(t))}</span></div><div class="u">Optimal ${esc(targetText(t) || '—')}${prev ? ` · last ${esc(showVal(t, prev.value))}` : ''}</div></div>
+      <input name="${t.id}" value="${esc(cur ? showVal(t, cur.value) : '')}" inputmode="decimal" aria-label="${esc(t.name)}"></div>`;
     }).join('')}`).join('')}
     <div class="actions" style="margin-top:18px"><button class="btn primary">Save results</button><button type="button" class="btn" data-close>Cancel</button></div>
   </form>`);
   $('#resform').addEventListener('submit', e => {
     e.preventDefault(); const f = new FormData(e.target), dt = f.get('__date'); let n = 0;
     tests.forEach(t => {
-      const v = (f.get(t.id) || '').trim(), had = db.results.some(r => r.testId === t.id && r.date === dt);
+      const typed = (f.get(t.id) || '').trim(), cur = db.results.find(r => r.testId === t.id && r.date === dt), had = !!cur;
+      // Unchanged values are kept exactly as stored (no rounding drift from unit conversion).
+      const v = cur && typed === String(showVal(t, cur.value)) ? cur.value : toStored(t, typed);
       if (v || had) { upsertResult(t.id, dt, v); if (v) { n++; t.nextDue = null; } }
     });
     db.draws ||= [];
@@ -775,6 +793,7 @@ document.addEventListener('change', e => {
   if (e.target.id === 'sex') { db.settings.sex = e.target.value || null; applyAgeNorms(db); save('Saved'); }
   if (e.target.id === 'dob') { db.settings.dob = e.target.value || null; applyAgeNorms(db); save('Birth date saved'); }
   if (e.target.id === 'bflag') { bloodFilter.flagged = e.target.checked; render(); }
+  if (e.target.id === 'units') { db.settings.units = e.target.value; save(e.target.value === 'si' ? 'Showing international units' : 'Showing U.S. units'); }
   if (e.target.id === 'soon') { db.settings.soonDays = Math.max(7, Number(e.target.value) || 60); save('Updated'); }
   if (e.target.id === 'importfile') {
     const file = e.target.files[0]; if (!file) return;

@@ -67,6 +67,21 @@ test('a new visitor can set up and use every screen without errors', async ({ pa
   await expect(page.locator('#modal')).toBeVisible();
   await page.keyboard.press('Escape');
 
+  // International units: switch, see mmol/L, enter a result in mmol/L, stored in mg/dL
+  await page.locator('.tabs [data-view="data"]').click();
+  await expect(page.getByText('KB of the')).toBeVisible();                 // storage meter
+  await page.locator('#units').selectOption('si');
+  await page.locator('.tabs [data-view="blood"]').click();
+  await expect(page.locator('[data-test="ldl-nih"] .rc-val')).toContainText('2.69');   // 104 mg/dL
+  await expect(page.locator('[data-test="ldl-nih"] .rc-val small')).toHaveText('mmol/L');
+  await page.locator('[data-test="ldl-nih"]').first().click();
+  await page.locator('#addone [name="date"]').fill('2026-10-01');
+  await page.locator('#addone [name="value"]').fill('2.5');
+  await page.locator('#addone button').click();
+  expect(Math.round(await page.evaluate(() => +resultsFor('ldl-nih').find(r => r.date === '2026-10-01').value))).toBe(97);
+  await page.locator('#modal [data-close]').first().click();
+  await page.evaluate(() => { db.settings.units = 'us'; save(); });
+
   // Data survives a reload (saved in the browser)
   await page.reload();
   expect(await page.evaluate(() => db.results.length)).toBeGreaterThanOrEqual(8);

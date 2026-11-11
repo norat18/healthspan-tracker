@@ -34,13 +34,13 @@ function tile(id) {
     <div class="t-val muted">Not tested yet</div><div class="t-why">${esc(TILE_PURPOSE[id] || t.description)}</div></button>`;
   const f = flag(t, r.value), stale = days(r.date, today()) > 400;
   const v = num(r.value), pv = p ? num(p.value) : null;
-  const trend = v != null && pv != null && v !== pv ? `<span class="t-trend">${v > pv ? '▲' : '▼'} from ${esc(p.value)}</span>` : '';
+  const trend = v != null && pv != null && v !== pv ? `<span class="t-trend">${v > pv ? '▲' : '▼'} from ${esc(showVal(t, p.value))}</span>` : '';
   return `<button class="tile ${FLAG_TONE[f]}" data-test="${id}">
     <div class="t-top"><span class="t-name">${esc(short(t.name))}</span><span class="dot ${FLAG_TONE[f]}" title="${FLAG_WORD[f]}"></span></div>
-    <div class="t-val">${esc(r.value)} <small>${esc(t.unit)}</small></div>
+    <div class="t-val">${esc(showVal(t, r.value))} <small>${esc(showUnit(t))}</small></div>
     <div class="t-meta"><span class="t-flag ${FLAG_TONE[f]}">${FLAG_WORD[f]}</span>${trend}</div>
     <div class="t-why">${esc(TILE_PURPOSE[id] || t.description)}</div>
-    <div class="t-date ${stale ? 'stale' : ''}">${fmt(r.date)}${stale ? ' · over a year old' : ''}${t.optimalText ? ` · target ${esc(t.optimalText)}` : ''}</div></button>`;
+    <div class="t-date ${stale ? 'stale' : ''}">${fmt(r.date)}${stale ? ' · over a year old' : ''}${targetText(t) ? ` · target ${esc(targetText(t))}` : ''}</div></button>`;
 }
 
 function vSummary() {
@@ -69,6 +69,7 @@ function vSummary() {
     <div class="muted small">As of ${fmt(T)}${age != null ? ` · age ${age} (next birthday ${fmt(nextBirthday(dob))})` : ''} · tap any result for its history</div></div>
     <div class="legend small"><span><i class="dot ok"></i>In range</span><span><i class="dot bad"></i>Outside target</span><span><i class="dot none"></i>No target / not tested</span></div></div>
 
+  ${typeof sizeNote === 'function' && sizeNote().warn ? `<div class="hint pd-hint warn-hint" style="margin-bottom:12px"><div><b>Your data is ${sizeNote().pct}% of your account’s storage.</b> See Data → Storage to free up space.</div></div>` : ''}
   ${!db.settings.dob || !db.settings.sex ? `<div class="card welcome"><div class="card-b"><h2 style="margin:0 0 4px">Welcome to Healthspan Tracker</h2>
     <p>Track your blood tests, body and fitness results, scans, screenings and vaccines in one place — and get reminded when each is due. Start with two details so recommendations fit you:</p>
     <div class="grid2" style="max-width:520px"><label class="f">Date of birth<input id="dob" type="date" value="${db.settings.dob || ''}"></label>
@@ -77,8 +78,8 @@ function vSummary() {
   <div class="sum-top">
     <div class="card attn"><div class="card-h"><h3>Needs attention</h3><span class="chip ${flagged.length + scanFlags.length ? 'overdue' : 'ok'}">${flagged.length + scanFlags.length}</span></div>
       <div class="card-b"><ul class="list">
-      ${flagged.map(({ t, r }) => { const lf = labFlag(t, r.value); return `<li class="row click" data-test="${t.id}"><div class="main"><div class="title">${esc(short(t.name))} <span class="v-${flag(t, r.value)}">${esc(r.value)} ${esc(t.unit)}</span>${lf ? ` <span class="labtag ${lf}">${lf === 'normal' ? 'Within lab normal' : 'Outside lab normal'}</span>` : ''}</div>
-        <div class="meta">${esc(FLAG_WORD[flag(t, r.value)])}: ${esc(t.optimalText)}${t.labText ? ` · lab normal ${esc(t.labText)}` : ''} · ${fmt(r.date)} · ${kindOf(t) === 'blood' ? 'Bloodwork' : 'Body & Fitness'}</div></div></li>`; }).join('')}
+      ${flagged.map(({ t, r }) => { const lf = labFlag(t, r.value); return `<li class="row click" data-test="${t.id}"><div class="main"><div class="title">${esc(short(t.name))} <span class="v-${flag(t, r.value)}">${esc(showVal(t, r.value))} ${esc(showUnit(t))}</span>${lf ? ` <span class="labtag ${lf}">${lf === 'normal' ? 'Within lab normal' : 'Outside lab normal'}</span>` : ''}</div>
+        <div class="meta">${esc(FLAG_WORD[flag(t, r.value)])}: ${esc(targetText(t))}${t.labText ? ` · lab normal ${esc(labRangeText(t))}` : ''} · ${fmt(r.date)} · ${kindOf(t) === 'blood' ? 'Bloodwork' : 'Body & Fitness'}</div></div></li>`; }).join('')}
       ${scanFlags.map(({ id, st }) => `<li class="row click" data-go="procs"><div class="main"><div class="title">${esc(SCANS[id].title)}</div><div class="meta">${esc(st.text)} · ${fmt(st.date)} · Imaging</div></div></li>`).join('')}
       ${flagged.length + scanFlags.length ? '' : '<li class="row muted">Everything is in range.</li>'}
       </ul></div></div>

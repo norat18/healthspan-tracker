@@ -55,7 +55,7 @@ function parseLabText(text) {
     for (let j = i + 1; j < Math.min(lines.length, i + 26); j++) {
       const l = lines[j];
       if (idx.has(normName(l))) break;
-      if (!range) range = parseRange(l);
+      if (!range) { range = parseRange(l); if (range) range.line = l; }
       if (SKIP.test(l) || isMarkerLine(l)) continue;
       const v = l.replace(/\s*(mg\/dl|g\/dl|meq\/l|u\/l|ng\/ml|pg\/ml|nmol\/l|mg\/l|%|u\[iu\]\/ml|uiu\/ml|ml\/min.*)$/i, '').trim();
       if (VALUE.test(v) || QUAL.test(v)) { out.set(id, { testId: id, value: v.replace(/\s+/g, ''), source: lines[i], range }); break; }
@@ -129,8 +129,13 @@ function renderLabReview() {
     e.preventDefault(); const f = new FormData(e.target); let n = 0; const dates = new Set();
     ok.forEach((x, i) => {
       if (!f.get('use' + i)) return; const v = (f.get('val' + i) || '').trim(), d = f.get('date' + i); if (!v || !d) return;
-      upsertResult(x.testId, d, v); const t = testById(x.testId); if (t) t.nextDue = null; dates.add(d); n++;
-      if (t && x.range && f.get('rng' + i) && (x.range.low != null || x.range.high != null)) Object.assign(t, { labLow: x.range.low, labHigh: x.range.high, labText: x.range.text });
+      const t0 = testById(x.testId), si = x.range && reportUnitSystem(t0, x.range.line) === 'si';
+      upsertResult(x.testId, d, si ? siToStored(t0, v) : v); const t = t0; if (t) t.nextDue = null; dates.add(d); n++;
+      if (t && x.range && f.get('rng' + i) && (x.range.low != null || x.range.high != null)) {
+        const cv = n => n == null ? null : (si ? +siToStored(t, String(n)) : n);
+        const lo = cv(x.range.low), hi = cv(x.range.high);
+        Object.assign(t, { labLow: lo, labHigh: hi, labText: si ? (lo != null && hi != null ? `${lo}–${hi}` : hi != null ? `<${hi}` : `>${lo}`) : x.range.text });
+      }
     });
     db.draws ||= []; dates.forEach(d => { if (!db.draws.some(x => x.date === d)) db.draws.push({ id: 'draw-' + d, date: d, note: 'Imported from lab report.' }); });
     close(); save(`Saved ${n} result${n === 1 ? '' : 's'}`);
