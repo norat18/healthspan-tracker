@@ -99,3 +99,26 @@ test('privacy page loads', async ({ page }) => {
   await page.goto('/privacy.html');
   await expect(page.getByRole('heading', { name: 'Privacy & Terms' })).toBeVisible();
 });
+
+test('scanned PDFs and photos of reports are read with on-device text recognition', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone', 'same code path as desktop; run once to keep CI fast');
+  test.setTimeout(240_000);
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { db.settings.dob = '1985-04-12'; db.settings.sex = 'female'; save(); });
+  const expected = { 'dexa-total-mass': '150.5', 'dexa-lean-mass': '98.2', 'dexa-fat-mass': '45.1', 'dexa-body-fat-pct': '28.4', 'dexa-visceral-fat': '0.85',
+    'dexa-ag-ratio': '0.82', 'dexa-t-score': '1.2', 'vo2-max': '41', 'resting-hr': '62', 'vo2-max-hr': '188' };
+
+  for (const file of ['tests/fixtures/scanned-report-sample.pdf', 'tests/fixtures/report-photo-sample.jpg']) {
+    await page.evaluate(() => openLabImport());
+    await page.locator('#labfiles').setInputFiles(file);
+    await expect(page.locator('#labsave')).toBeVisible({ timeout: 200_000 });
+    const found = await page.evaluate(() => Object.fromEntries(labFound.filter(x => !x.error).map(x => [x.testId, [x.value, x.date, x.ocr]])));
+    for (const [id, v] of Object.entries(expected)) expect(found[id]?.[0], `${file}: ${id}`).toBe(v);
+    expect(found['dexa-body-fat-pct'][1]).toBe('2026-05-14');
+    expect(found['dexa-body-fat-pct'][2]).toBe(true);                         // flagged "check" (read from an image)
+    await page.locator('#labsave button.primary').click();
+    expect(await page.evaluate(() => resultsFor('dexa-body-fat-pct').at(-1).value)).toBe('28.4');
+  }
+  expect(errors).toEqual([]);
+});

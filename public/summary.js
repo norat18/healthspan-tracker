@@ -88,7 +88,7 @@ function vSummary() {
         <div class="mini-stats"><div class="${overdue.length ? 'bad' : ''}"><b>${overdue.length}</b><span>overdue</span></div><div class="info"><b>${never.length}</b><span>never done / not on file</span></div></div>
         ${never.length ? `<p class="small" style="margin:8px 0 0">Many “not on file” items just need a past date. <a href="#" data-pastdates>Fill in past dates</a></p>` : ''}
         ${overdue.length ? `<p class="small" style="margin:8px 0 0"><b>Overdue:</b> ${esc(overdue.slice(0, 6).map(x => short(x.i.name)).join(', '))}${overdue.length > 6 ? '…' : ''}</p>` : ''}
-        <div class="actions" style="margin-top:10px"><button class="btn" data-visitsheet="wellness-exam">Prepare for wellness exam</button><button class="btn" data-labimport>Import lab report</button></div>
+        <div class="actions" style="margin-top:10px"><button class="btn" data-visitsheet="wellness-exam">Prepare for wellness exam</button><button class="btn" data-labimport>Import results</button></div>
         <h4 class="small muted" style="margin:14px 0 4px">Coming up</h4>
         <ul class="list">${up.slice(0, 5).map(u => `<li class="row ${u.i ? 'click' : ''}" ${u.i ? `data-proc="${u.i.id}"` : 'data-go="blood"'}><div class="main"><div class="title">${u.blood ? `Bloodwork · ${u.n} test${u.n > 1 ? 's' : ''}` : esc(u.i.name)}</div></div><span class="small muted">${fmt(u.due)}</span></li>`).join('')}</ul>
       </div></div>

@@ -401,7 +401,7 @@ function vBlood(kind) {
     <span class="grow"></span>
     <div class="seg-toggle" role="group" aria-label="View"><button class="${cards ? 'on' : ''}" data-rview="cards">Cards</button><button class="${cards ? '' : 'on'}" data-rview="table">Table</button></div>
     <button class="btn" data-newtest="${kind}">Add ${body ? 'metric' : 'test'}</button>
-    ${body ? '' : '<button class="btn" data-labimport>Import lab report</button>'}
+    <button class="btn" data-labimport>Import results (PDF or photo)</button>
     <button class="btn primary" data-addresults="all" data-kind="${kind}">Log ${body ? 'results' : 'lab results'}</button>
   </div>
   ${body && typeof fitnessAgeCard === 'function' ? fitnessAgeCard() : ''}
