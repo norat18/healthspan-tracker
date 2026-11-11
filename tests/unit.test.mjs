@@ -109,6 +109,7 @@ test('a lab report in mmol/L is recognized and converted', () => {
 
 /* ---- scan reports (scanreport.js) with made-up report text ---- */
 const sr = { console }; sr.window = sr; vm.createContext(sr);
+vm.runInContext(read('labimport.js').replace("'use strict';", ''), sr);   // loaded before scanreport.js in the app too
 vm.runInContext(read('scanreport.js').replace("'use strict';", '').replace(/^const /gm, 'var '), sr);
 
 test('MRI: normal report', () => {
@@ -128,6 +129,12 @@ test('MRI: minor findings without follow-up', () => {
   const r = sr.parseScanReport('full-body-mri', `Scan date: 2026-04-01\nSUMMARY\nSmall simple liver cyst. Mild degenerative changes of the lumbar spine.`);
   assert.equal(r.values['mri-overall'], 'Minor findings — monitor');
 });
+test('scan and lab report dates skip the birth date', () => {
+  assert.equal(sr.scanReportDate('Patient: Test Person   DOB: 1990-01-15\nWHOLE BODY MRI\nReport generated 2026-04-21'), '2026-04-21');
+  assert.equal(sr.scanReportDate('Date of Birth: Jan 15, 1990\nExam Date: 04/21/2026'), '2026-04-21');
+  assert.equal(sr.scanReportDate('D.O.B.: 01/15/1990\nIMPRESSION: normal'), sr.findDate('IMPRESSION: normal'));
+});
+
 test('coronary calcium score report', () => {
   const r = sr.parseScanReport('coronary-calcium-scan', `Study Date: 05/05/2035\nTotal Agatston calcium score: 0\nThis places the patient in the 0 percentile for age and sex.`);
   assert.deepEqual([r.date, r.values['cac-score'], r.values['cac-percentile']], ['2035-05-05', '0', '0']);

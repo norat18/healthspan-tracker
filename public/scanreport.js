@@ -5,7 +5,8 @@ const MONTHS3 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8
 const isoDate = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
 /** Scan date: "Exam/Scan/Study/Service Date: 01/20/2026" or "… date: January 20, 2026", else the lab-report date rules. */
-function scanReportDate(text) {
+function scanReportDate(text) { return usableDate(scanReportDate0(stripBirthDates(text))); }
+function scanReportDate0(text) {
   const label = '(?:exam(?:ination)?|scan|study|service|procedure|visit|report|imaging)\\s*date|date\\s*of\\s*(?:exam|service|scan|study)';
   let m = text.match(new RegExp(`(?:${label})\\s*:?\\s*(\\d{1,2})[\\/\\-.](\\d{1,2})[\\/\\-.](\\d{4})`, 'i'));
   if (m) return isoDate(m[3], m[1], m[2]);

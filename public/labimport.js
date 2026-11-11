@@ -25,7 +25,14 @@ function aliasIndex() {
   return m;
 }
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-function findDate(text) {
+/** Remove birth dates ("DOB: 09/07/1990", "Date of birth: Sep 7, 1990", "Born 1990-09-07") so they're never read as the test date. */
+const MON_RE = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+\\d{1,2},?\\s+\\d{4}';
+const DOB_RE = new RegExp(`(?:d\\.?o\\.?b\\.?|date\\s*of\\s*birth|birth\\s*date|birthdate|born)\\s*(?:\\(?[a-z/]*\\)?)?\\s*[:#-]?\\s*(?:\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4}|\\d{4}-\\d{2}-\\d{2}|${MON_RE})`, 'gi');
+const stripBirthDates = text => String(text || '').replace(DOB_RE, ' ');
+/** A found date is never the person's own birth date. */
+const usableDate = d => d && !(typeof db !== 'undefined' && db.settings && d === db.settings.dob) ? d : null;
+function findDate(text) { return usableDate(findDate0(stripBirthDates(text))); }
+function findDate0(text) {
   const g = text.match(/(?:measurement|test|scan|exam|collection|report)\s*date\s*:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i) || text.match(/(?:scan|test)\s*(?:performed|done)\s*on\s*([A-Z][a-z]{2})\w*\s+(\d{1,2}),\s*(\d{4})/i)
     || text.match(/test\s*date\s*:?\s*([A-Z][a-z]{2})\w*\s+(\d{1,2}),\s*(\d{4})/i);
   if (g) return isNaN(g[1]) ? `${g[3]}-${String(MONTHS[g[1].toLowerCase().slice(0, 3)]).padStart(2, '0')}-${g[2].padStart(2, '0')}` : `${g[3]}-${g[1].padStart(2, '0')}-${g[2].padStart(2, '0')}`;
