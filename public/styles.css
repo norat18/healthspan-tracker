@@ -382,3 +382,8 @@ main:focus { outline: none; }
 .area-panel h4:not(:first-child) { margin-top: 16px; }
 @media (prefers-reduced-motion: reduce) { .area-panel { animation: none; } }
 .area-panel[hidden] { display: none; }
+
+.tag-book, .tag-booked { font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 99px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+.tag-book { background: var(--warn-soft); color: var(--warn); }
+.tag-booked { background: var(--ok-soft); color: var(--ok); }
+.booked-box { margin-top: 8px; font-weight: 500; }

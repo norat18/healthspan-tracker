@@ -649,6 +649,8 @@ function openProc(id, focusLog) {
   open(`${head(id ? esc(p.name) : 'New appointment type', id ? ((KIND_INFO[p.kind] || [])[0] || 'Routine checkup') : '')}
   <div class="m-b">
     ${id ? `<p class="purpose"><b>What it’s for:</b> ${esc(purposeOf(p))}</p>${p.purpose && p.description ? `<p class="small muted">${esc(p.description)}</p>` : ''}<p class="small">${chip(s)} ${esc(s.label)}${p.rawNext ? ` <span class="muted">· Spreadsheet said: “${esc(p.rawNext.replace(/\s+/g, ' '))}”</span>` : ''}</p>
+    ${s.due && isProc(p) && !p.bundleWith && !['never', 'complete', 'unscheduled'].includes(s.state) ? `<label class="check booked-box"><input type="checkbox" id="bookedbox" ${p.bookedFor === s.due ? 'checked' : ''}> I’ve booked this for ${fmt(s.due)}</label>
+      <p class="small muted" style="margin-top:2px">${p.bookedFor === s.due ? 'You’ll get a reminder a week before.' : 'Not booked yet — you’ll get a reminder a month before to book it, and again a week before.'}</p>` : ''}
     ${['checkup', 'womens', 'screening'].includes(p.kind) ? `<div class="actions"><button class="btn" data-visitsheet="${p.id}">Prepare visit sheet</button></div>` : ''}
     <h3 id="logh">Log a visit</h3>
     <form id="visitform" class="grid2">
@@ -677,6 +679,7 @@ function openProc(id, focusLog) {
     </form>
   </div>`);
   if (focusLog) setTimeout(() => $('#visitform [name=result]')?.focus(), 50);
+  $('#bookedbox')?.addEventListener('change', e => { p.bookedFor = e.target.checked ? s.due : null; save(e.target.checked ? 'Marked as booked' : 'Marked as not booked'); openProc(p.id); });
   $('#visitform')?.addEventListener('submit', e => {
     e.preventDefault(); const f = new FormData(e.target), date = f.get('date');
     db.visits.push({ id: `${p.id}-${date}-${Date.now() % 1e5}`, procId: p.id, date, result: f.get('result').trim() });
@@ -701,14 +704,15 @@ function icsText() {
   const e = s => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
   const d8 = s => s.replace(/-/g, '');
   const events = [];
-  const ev = (uid, date, summary, desc) => {
+  const ev = (uid, date, summary, desc, book) => {
     const on = date < T ? T : date, end = iso(new Date(toDate(on).getTime() + 864e5 + 36e5));
     events.push(['BEGIN:VEVENT', `UID:${uid}-${d8(on)}@health-tracker`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d8(on)}`, `DTEND;VALUE=DATE:${d8(end.slice(0, 10))}`,
       `SUMMARY:${e(summary)}`, `DESCRIPTION:${e(desc)}`,
+      ...(book && date > T ? ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:Time to book: ${e(summary)} (due in 1 month)`, 'TRIGGER:-P30D', 'END:VALARM'] : []),
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${e(summary)} in 1 week`, 'TRIGGER:-P7D', 'END:VALARM',
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${e(summary)} today`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT'].join('\r\n'));
   };
-  myProcs().forEach(p => { const s = schedule(p); if (s.due) ev(p.id, s.due, `${short(p.name)}${s.state === 'overdue' ? ' (overdue)' : ''}`, `${p.name}\n${s.label}${p.provider ? '\nProvider: ' + p.provider : ''}\n${freqText(p.frequencyMonths)}`); });
+  myProcs().forEach(p => { const s = schedule(p); if (s.due) ev(p.id, s.due, `${short(p.name)}${s.state === 'overdue' ? ' (overdue)' : ''}`, `${p.name}\n${s.label}${p.provider ? '\nProvider: ' + p.provider : ''}\n${freqText(p.frequencyMonths)}${needsBooking(p, s) ? '\nNot booked yet.' : ''}`, needsBooking(p, s)); });
   const groups = {};
   db.tests.forEach(t => { const s = schedule(t); if (!s.due) return; const on = s.due < T ? T : s.due; (groups[`${t.orderFrom || 'Other'}|${on}`] ||= []).push([t, s]); });
   Object.entries(groups).forEach(([k, xs]) => {

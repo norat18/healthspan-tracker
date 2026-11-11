@@ -10,10 +10,16 @@ const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.p
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 function b64ToBytes(s) { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); }
 
-/** Items with a real due date (not "no date on file"), as {n: name, d: date}. */
+/** An appointment you still have to book: a scheduled checkup, scan or test (not bloodwork, not something done at
+    another visit) whose due date you haven't marked as booked. These get an extra reminder a month ahead. */
+function needsBooking(i, s) {
+  return isProc(i) && !i.bundleWith && !!s.due && !['never', 'complete', 'unscheduled'].includes(s.state) && i.bookedFor !== s.due;
+}
+const BOOK_AHEAD_DAYS = 30;
+/** Items with a real due date (not "no date on file"), as {n: name, d: date, b: 1 if it still needs booking}. */
 function pushDueList() {
   return allItems().filter(x => x.s.due && !['never', 'complete', 'unscheduled'].includes(x.s.state))
-    .map(x => ({ n: short(x.i.name).slice(0, 80), d: x.s.due })).slice(0, 150);
+    .map(x => ({ n: short(x.i.name).slice(0, 80), d: x.s.due, ...(needsBooking(x.i, x.s) ? { b: 1 } : {}) })).slice(0, 150);
 }
 /** The text a notification shows, saved on this device for the service worker. */
 async function savePushSummary() {
@@ -21,8 +27,9 @@ async function savePushSummary() {
   const items = allItems(), T = today();
   const overdue = items.filter(x => x.s.state === 'overdue').map(x => short(x.i.name));
   const soon = items.filter(x => x.s.due && x.s.due >= T && days(T, x.s.due) <= 7 && x.s.state !== 'never').map(x => `${short(x.i.name)} (${fmtShort(x.s.due)})`);
-  const parts = [soon.length && `Due soon: ${soon.slice(0, 4).join(', ')}${soon.length > 4 ? '…' : ''}`, overdue.length && `Overdue: ${overdue.slice(0, 4).join(', ')}${overdue.length > 4 ? '…' : ''}`].filter(Boolean);
-  const summary = { title: soon.length || overdue.length ? 'Healthspan Tracker reminder' : 'Healthspan Tracker', body: parts.join(' · ') || 'Open the app to see what’s coming up.' };
+  const book = items.filter(x => needsBooking(x.i, x.s) && x.s.due >= T && days(T, x.s.due) <= BOOK_AHEAD_DAYS + 1 && days(T, x.s.due) > 7).map(x => `${short(x.i.name)} (${fmtShort(x.s.due)})`);
+  const parts = [soon.length && `Due soon: ${soon.slice(0, 4).join(', ')}${soon.length > 4 ? '…' : ''}`, book.length && `Time to book: ${book.slice(0, 3).join(', ')}${book.length > 3 ? '…' : ''}`, overdue.length && `Overdue: ${overdue.slice(0, 4).join(', ')}${overdue.length > 4 ? '…' : ''}`].filter(Boolean);
+  const summary = { title: soon.length || overdue.length || book.length ? 'Healthspan Tracker reminder' : 'Healthspan Tracker', body: parts.join(' · ') || 'Open the app to see what’s coming up.' };
   try { await (await caches.open('healthspan-meta')).put('reminder-summary', new Response(JSON.stringify(summary), { headers: { 'Content-Type': 'application/json' } })); } catch (e) { }
 }
 async function pushCall(path, body) {
@@ -68,8 +75,8 @@ function pushSection() {
   const on = db.settings.pushOn && 'Notification' in window && Notification.permission === 'granted';
   const blocked = 'Notification' in window && Notification.permission === 'denied';
   return `<h3 style="margin-top:18px">Phone &amp; desktop notifications</h3>
-  <p class="small">${on ? '<b>✓ On.</b> You’ll get a notification on this device the day something is due, a week before, and on Mondays if anything is overdue.'
-    : 'Get a notification the day something is due, a week before, and a weekly nudge for anything overdue.'}
+  <p class="small">${on ? '<b>✓ On.</b> You’ll get a notification on this device a month before anything you still need to book, a week before and on the day something is due, and on Mondays if anything is overdue.'
+    : 'Get a notification a month before anything you still need to book, a week before and on the day something is due, and a weekly nudge for anything overdue.'}
     ${isIOS() && !isInstalled() ? ' On iPhone or iPad, first add the app to your Home Screen (Share → Add to Home Screen) and open it from there.' : ''}
     ${blocked ? ' <b>Notifications are blocked for this site</b> — allow them in your browser settings first.' : ''}</p>
   <div class="actions">${on ? '<button class="btn" data-pushtest>Send a test</button><button class="btn" data-pushoff>Turn off</button>'

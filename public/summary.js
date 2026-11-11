@@ -256,7 +256,7 @@ function vSummary() {
   </div>` : ''}
 
   <section class="card sum-card" style="margin-top:12px"><div class="card-h"><h3>📅 Coming up</h3><a href="#" data-go="reminders" class="small">All reminders</a></div>
-    <div class="card-b"><ul class="list">${up.slice(0, 3).map(u => `<li class="row ${u.i ? 'click' : ''}" ${u.i ? `data-proc="${u.i.id}"` : 'data-go="blood"'}><div class="main"><div class="title">${u.blood ? `Bloodwork · ${u.n} test${u.n > 1 ? 's' : ''}` : esc(u.i.name)}</div></div><span class="small muted">${fmt(u.due)} · ${rel(days(T, u.due))}</span></li>`).join('') || '<li class="row muted">Nothing scheduled yet.</li>'}</ul>
+    <div class="card-b"><ul class="list">${up.slice(0, 3).map(u => `<li class="row ${u.i ? 'click' : ''}" ${u.i ? `data-proc="${u.i.id}"` : 'data-go="blood"'}><div class="main"><div class="title">${u.blood ? `Bloodwork · ${u.n} test${u.n > 1 ? 's' : ''}` : esc(u.i.name)}${u.i && needsBooking(u.i, schedule(u.i)) ? ' <span class="tag-book">Not booked</span>' : u.i && u.i.bookedFor === u.due ? ' <span class="tag-booked">Booked</span>' : ''}</div></div><span class="small muted">${fmt(u.due)} · ${rel(days(T, u.due))}</span></li>`).join('') || '<li class="row muted">Nothing scheduled yet.</li>'}</ul>
       <div class="actions" style="margin-top:10px">${visitSoon ? `<button class="btn primary" data-visitsheet="wellness-exam">Prepare for your ${esc(fmt(ws.due))} visit</button>` : ''}<button class="btn" data-labimport>Import results</button>${never ? `<button class="btn" data-pastdates>Add ${never} past date${never === 1 ? '' : 's'}</button>` : ''}</div></div></section>
 
   <h3 class="areas-h">Your areas</h3>

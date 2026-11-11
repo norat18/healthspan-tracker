@@ -31,3 +31,9 @@ test('not twice on the same day', () => {
 test('unknown time zone falls back to UTC', () => {
   assert.equal(shouldNotify(row('Not/AZone', [{ n: 'Dentist', d: '2026-11-11' }]), at('2026-11-11T08:00:00Z')), '2026-11-11');
 });
+test('a month ahead only for appointments not booked yet', () => {
+  // 2026-12-11 is 30 days after 2026-11-11
+  assert.equal(shouldNotify(row('UTC', [{ n: 'DEXA', d: '2026-12-11', b: 1 }]), at('2026-11-11T08:00:00Z')), '2026-11-11');
+  assert.equal(shouldNotify(row('UTC', [{ n: 'DEXA', d: '2026-12-11' }]), at('2026-11-11T08:00:00Z')), null);          // booked
+  assert.equal(shouldNotify(row('UTC', [{ n: 'DEXA', d: '2026-12-12', b: 1 }]), at('2026-11-11T08:00:00Z')), null);     // 31 days
+});

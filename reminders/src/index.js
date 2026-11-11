@@ -1,5 +1,6 @@
 // Healthspan Tracker reminders: stores opted-in devices and a list of {name, due date}, and once a day sends a
-// push notification to anyone with something due today, due in a week, or overdue (overdue: Mondays only).
+// push notification to anyone with something due today, due in a week, not yet booked and due in a month,
+// or overdue (overdue: Mondays only).
 // Pushes carry no content; the app's service worker shows the reminder text it already has on the device.
 // No test results or other health values are ever sent here.
 
@@ -54,6 +55,7 @@ export default {
 };
 
 const SEND_HOUR = 8;
+const BOOK_AHEAD_DAYS = 30;   // extra reminder for appointments not booked yet
 /** Local date (YYYY-MM-DD), hour and weekday for a time zone; falls back to UTC for unknown zones. */
 function localNow(tz, now = new Date()) {
   let zone = 'UTC'; try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); zone = tz || 'UTC'; } catch { }
@@ -67,8 +69,9 @@ export function shouldNotify(row, now = new Date()) {
   const local = localNow(row.tz, now);
   if (local.hour !== SEND_HOUR || row.last_sent === local.date) return null;
   let due = []; try { due = JSON.parse(row.due); } catch { }
-  const inWeek = addDays(local.date, 7);
-  const hit = due.some(x => x.d === local.date || x.d === inWeek || (local.monday && x.d < local.date));
+  const inWeek = addDays(local.date, 7), inMonth = addDays(local.date, BOOK_AHEAD_DAYS);
+  // due today, due in a week, not yet booked and due in a month, or overdue (Mondays)
+  const hit = due.some(x => x.d === local.date || x.d === inWeek || (x.b && x.d === inMonth) || (local.monday && x.d < local.date));
   return hit ? local.date : null;
 }
 async function sendDailyReminders(env) {
@@ -123,7 +126,7 @@ async function verifyFirebaseToken(token, projectId) {
 function cleanDue(due) {
   return (Array.isArray(due) ? due : []).slice(0, MAX_ITEMS)
     .filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(x.d))
-    .map(x => ({ n: String(x.n || '').slice(0, 80), d: x.d }));
+    .map(x => ({ n: String(x.n || '').slice(0, 80), d: x.d, ...(x.b ? { b: 1 } : {}) }));
 }
 function validEndpoint(e) {
   try { const u = new URL(e); return u.protocol === 'https:' && e.length < 1000; } catch { return false; }
