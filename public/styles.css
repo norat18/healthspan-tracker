@@ -306,3 +306,8 @@ code { font-size: .85em; background: var(--surface-2); padding: 1px 5px; border-
 [role="button"] { cursor: pointer; }
 main:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* fill a scan form from a report */
+.fill-report { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+.fill-report .btn { white-space: nowrap; }
+#scanform .filled { outline: 2px solid var(--warn); outline-offset: 1px; }

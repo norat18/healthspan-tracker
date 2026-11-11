@@ -138,11 +138,14 @@ function openScanLog(procId, dateOverride) {
   const visit = visitsFor(procId).find(v => v.date === date);
   open(`${head('Log results · ' + esc(s.title), 'Leave blank anything the report doesn’t include')}
   <form id="scanform" class="m-b">
+    <div class="fill-report"><label class="btn">📄 Fill from report (PDF or photo)<input type="file" id="scanfile" accept="application/pdf,.pdf,image/*,.txt" hidden></label>
+      <span id="scanstatus" class="small muted" role="status">Read on your device — the file isn’t uploaded. You can check everything before saving.</span></div>
     <div class="grid2" style="margin-top:12px"><label class="f">Scan date<input type="date" name="__date" value="${date}" required></label></div>
     <div class="grid2" style="margin-top:12px">${s.metrics.map(m => `<label class="f" ${m.type === 'text' ? 'style="grid-column:1/-1"' : ''}>${esc(m.name)}${m.unit ? ` (${esc(m.unit)})` : ''}${field(m)}</label>`).join('')}</div>
     <label class="f" style="margin-top:12px">Report summary / interpretation<textarea name="__summary">${esc(visit && !(visit.result || '').startsWith('Imported from spreadsheet') ? visit.result : '')}</textarea></label>
     <div class="actions" style="margin-top:18px"><button class="btn primary">Save results</button><button type="button" class="btn" data-close>Cancel</button></div>
   </form>`);
+  $('#scanfile').addEventListener('change', e => { const file = e.target.files[0]; if (file) fillScanForm(procId, file); });
   $('#scanform').addEventListener('submit', e => {
     e.preventDefault(); const f = new FormData(e.target), dt = f.get('__date'), summary = f.get('__summary').trim();
     s.metrics.forEach(m => { const v = (f.get(m.id) || '').trim(); if (v || scanVal(m.id, dt)) upsertResult(m.id, dt, v); });

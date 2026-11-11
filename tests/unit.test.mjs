@@ -106,3 +106,37 @@ test('a lab report in mmol/L is recognized and converted', () => {
   assert.equal(u.reportUnitSystem(T('ldl-nih'), 'Normal value: <160 mg/dL'), 'us');
   assert.equal(Math.round(+u.siToStored(T('ldl-nih'), '2.87')), 111);
 });
+
+/* ---- scan reports (scanreport.js) with made-up report text ---- */
+const sr = { console }; sr.window = sr; vm.createContext(sr);
+vm.runInContext(read('scanreport.js').replace("'use strict';", '').replace(/^const /gm, 'var '), sr);
+
+test('MRI: normal report', () => {
+  const r = sr.parseScanReport('full-body-mri', `WHOLE BODY MRI\nExam Date: January 20, 2026\nFINDINGS:\nBrain: Normal brain MRI. No acute intracranial abnormality.\nIMPRESSION:\n1. No significant abnormalities identified.\n2. Unremarkable whole-body MRI.\nRECOMMENDATIONS:\nRoutine screening.`);
+  assert.equal(r.date, '2026-01-20');
+  assert.equal(r.values['mri-overall'], 'No significant findings');
+  assert.equal(r.values['mri-brain'], 'Normal');
+  assert.match(r.summary, /No significant abnormalities/);
+});
+test('MRI: findings that need follow-up', () => {
+  const r = sr.parseScanReport('full-body-mri', `Date of exam: 03/02/2026\nIMPRESSION:\n1. 1.2 cm left renal cyst, likely benign.\n2. 6 mm thyroid nodule; follow-up ultrasound is recommended.\nBrain: no acute findings.`);
+  assert.equal(r.date, '2026-03-02');
+  assert.equal(r.values['mri-overall'], 'Follow-up needed');
+  assert.match(r.values['mri-findings'], /renal cyst/);
+});
+test('MRI: minor findings without follow-up', () => {
+  const r = sr.parseScanReport('full-body-mri', `Scan date: 2026-04-01\nSUMMARY\nSmall simple liver cyst. Mild degenerative changes of the lumbar spine.`);
+  assert.equal(r.values['mri-overall'], 'Minor findings — monitor');
+});
+test('coronary calcium score report', () => {
+  const r = sr.parseScanReport('coronary-calcium-scan', `Study Date: 05/05/2035\nTotal Agatston calcium score: 0\nThis places the patient in the 0 percentile for age and sex.`);
+  assert.deepEqual([r.date, r.values['cac-score'], r.values['cac-percentile']], ['2035-05-05', '0', '0']);
+});
+test('CIMT report', () => {
+  const r = sr.parseScanReport('cimt', `Exam date: 12/09/2027\nMean CIMT: 0.55 mm. Maximum CIMT 0.81 mm.\nNo evidence of plaque. Estimated vascular age: 38 years.`);
+  assert.deepEqual([r.values['cimt-mean'], r.values['cimt-max'], r.values['cimt-plaque'], r.values['cimt-arterial-age']], ['0.55', '0.81', 'None', '38']);
+});
+test('CCTA report', () => {
+  const r = sr.parseScanReport('coronary-ct-angiogram', `IMPRESSION:\nCAD-RADS 2. Mixed plaque in the proximal LAD with 25-49% stenosis.`);
+  assert.deepEqual([r.values['ccta-cad-rads'], r.values['ccta-stenosis'], r.values['ccta-plaque']], ['2', '49', 'Mixed']);
+});

@@ -122,3 +122,23 @@ test('scanned PDFs and photos of reports are read with on-device text recognitio
   }
   expect(errors).toEqual([]);
 });
+
+test('a scanned MRI report fills the MRI card', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone', 'same code path as desktop');
+  test.setTimeout(180_000);
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { db.settings.dob = '1985-04-12'; db.settings.sex = 'female'; save(); openScanLog('full-body-mri'); });
+  await page.locator('#scanfile').setInputFiles('tests/fixtures/mri-report-sample.pdf');
+  await expect(page.locator('#scanstatus')).toContainText('Filled in from', { timeout: 150_000 });
+  const form = page.locator('#scanform');
+  await expect(form.locator('[name="__date"]')).toHaveValue('2026-01-20');
+  await expect(form.locator('[name="mri-overall"]')).toHaveValue('Minor findings — monitor');
+  await expect(form.locator('[name="mri-brain"]')).toHaveValue('Normal');
+  await expect(form.locator('[name="mri-findings"]')).toHaveValue(/renal cyst/i);
+  await expect(form.locator('[name="__summary"]')).toHaveValue(/renal cyst/i);
+  await form.locator('button.primary').click();
+  await page.locator('.tabs [data-view="procs"]').click();
+  await expect(page.locator('.scan', { hasText: 'Full-body MRI' })).toContainText('Mild');
+  expect(errors).toEqual([]);
+});
