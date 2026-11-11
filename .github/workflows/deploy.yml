@@ -1,0 +1,34 @@
+# Deploy to Firebase Hosting (https://healthspantracker.web.app) on every push to main.
+# healthspantracker.pages.dev mirrors Firebase Hosting, so it updates at the same time.
+# Auth is keyless: GitHub proves the run comes from this repository (OIDC) and Google lets it act as a
+# deploy-only service account (Workload Identity Federation). No secrets are stored in the repository.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ['public/**', 'firebase.json', 'firestore.rules', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1088186330776/locations/global/workloadIdentityPools/github/providers/healthspan-tracker
+          service_account: github-deploy@healthspan-tracker-app.iam.gserviceaccount.com
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy hosting and security rules
+        run: npx -y firebase-tools@latest deploy --only hosting,firestore:rules --project healthspan-tracker-app --non-interactive
