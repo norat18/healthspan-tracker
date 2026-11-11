@@ -31,4 +31,4 @@ jobs:
         with:
           node-version: 22
       - name: Deploy hosting and security rules
-        run: npx -y firebase-tools@latest deploy --only hosting,firestore:rules --project healthspan-tracker-app --non-interactive --debug
+        run: npx -y firebase-tools@latest deploy --only hosting,firestore:rules --project healthspan-tracker-app --non-interactive
