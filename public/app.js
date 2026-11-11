@@ -109,6 +109,7 @@ window.onCloudUser = async user => {
   updateSyncBadge(); if (!modal.open) render();
 };
 /** Explain a sign-in problem in plain words, with the technical code for troubleshooting. */
+window.onCloudSignInError = err => signInError(err);
 function signInError(err) {
   const code = (err && err.code) || 'unknown';
   const why = {
