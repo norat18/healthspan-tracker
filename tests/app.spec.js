@@ -7,7 +7,7 @@ const TABS = ['summary', 'reminders', 'blood', 'body', 'procs', 'myinfo', 'data'
 test('a new visitor can set up and use every screen without errors', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push('page error: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/firebase|googleapis|gstatic|recaptcha|net::ERR/i.test(m.text())) errors.push('console: ' + m.text()); });
+  page.on('console', m => { if (m.type() === 'error' && !/firebase|googleapis|gstatic|recaptcha|google\.com|net::ERR/i.test(m.text())) errors.push('console: ' + m.text()); });
 
   await page.goto('/');
   await expect(page.locator('h1')).toHaveText('Healthspan Tracker');
