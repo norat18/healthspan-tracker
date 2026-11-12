@@ -1,9 +1,9 @@
 // Offline support: keep a copy of the app so it opens without a connection.
 // Pages and app files: try the network first (so updates show right away), fall back to the saved copy offline.
 // Firebase/pdf.js libraries: serve the saved copy and refresh it in the background.
-const CACHE = 'healthspan-v23';
-const SHELL = ['./', 'index.html', 'styles.css?v=23', 'catalog.js?v=23', 'units.js?v=23', 'scans.js?v=23', 'summary.js?v=23', 'results.js?v=23', 'pastdates.js?v=23',
-  'myinfo.js?v=23', 'push.js?v=23', 'visit.js?v=23', 'labimport.js?v=23', 'scanreport.js?v=23', 'app.js?v=23', 'cloud.js?v=23', 'firebase-config.js', 'privacy.html', 'manifest.webmanifest',
+const CACHE = 'healthspan-v24';
+const SHELL = ['./', 'index.html', 'styles.css?v=24', 'catalog.js?v=24', 'units.js?v=24', 'scans.js?v=24', 'summary.js?v=24', 'results.js?v=24', 'pastdates.js?v=24',
+  'myinfo.js?v=24', 'push.js?v=24', 'visit.js?v=24', 'labimport.js?v=24', 'scanreport.js?v=24', 'app.js?v=24', 'cloud.js?v=24', 'firebase-config.js', 'privacy.html', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

@@ -30,13 +30,13 @@ function tile(id) {
   }
   const t = testById(id); if (!t) return '';
   const rs = resultsFor(id), r = rs.at(-1), p = rs.at(-2);
-  if (!r) return `<button class="tile none" data-test="${id}"><div class="t-name">${esc(short(t.name))}</div>
+  if (!r) return `<button class="tile none" data-test="${id}"><div class="t-name">${esc(label(t))}</div>
     <div class="t-val muted">Not tested yet</div><div class="t-why">${esc(TILE_PURPOSE[id] || t.description)}</div></button>`;
   const f = flag(t, r.value), stale = days(r.date, today()) > 400;
   const v = num(r.value), pv = p ? num(p.value) : null;
   const trend = v != null && pv != null && v !== pv ? `<span class="t-trend">${v > pv ? '▲' : '▼'} from ${esc(showVal(t, p.value))}</span>` : '';
   return `<button class="tile ${FLAG_TONE[f]}" data-test="${id}">
-    <div class="t-top"><span class="t-name">${esc(short(t.name))}</span><span class="dot ${FLAG_TONE[f]}" title="${FLAG_WORD[f]}"></span></div>
+    <div class="t-top"><span class="t-name">${esc(label(t))}</span><span class="dot ${FLAG_TONE[f]}" title="${FLAG_WORD[f]}"></span></div>
     <div class="t-val">${esc(showVal(t, r.value))} <small>${esc(showUnit(t))}</small></div>
     <div class="t-meta"><span class="t-flag ${FLAG_TONE[f]}">${FLAG_WORD[f]}</span>${trend}</div>
     <div class="t-why">${esc(TILE_PURPOSE[id] || t.description)}</div>
@@ -84,6 +84,8 @@ const WIN_COPY = {
   'vitamin-b12': ['🥦', 'B12 on target'], 'home-bp-sys': ['🩺', 'Healthy blood pressure'], 'resting-hr': ['💓', 'Healthy resting heart rate'], 'home-rhr': ['💓', 'Healthy resting heart rate'], 'tsh': ['🦋', 'Thyroid in range'], 'dexa-visceral-fat': ['🎯', 'Low visceral fat'], 'dexa-body-fat-pct': ['💪', 'Body fat on target'],
 };
 const RECENT_DAYS = 730;   // results older than 2 years don't count as current wins or problems
+/** Short display name, keeping the part that tells two halves of one measurement apart (blood pressure top/bottom). */
+const label = t => /\((top|bottom) number\)/i.test(t.name) ? t.name : short(t.name);
 // The same measurement recorded two ways (e.g. resting heart rate from a fitness test and from home):
 // only the newest reading counts, so a better recent reading replaces an older one.
 const SAME_MEASURE = [['resting-hr', 'home-rhr']];
@@ -127,11 +129,12 @@ function insights() {
   db.tests.filter(t => t.kind === 'blood' || t.kind === 'metric').forEach(t => {
     const imp = improvement(t); if (!imp || days(imp.to.date, T) > RECENT_DAYS) return;
     wins.push({ icon: imp.inRange ? '🎉' : '📈', test: t.id, score: 8 + (WEIGHT[t.id] || 1),
-      text: `${short(t.name)} ${imp.dir} ${imp.delta}${showUnit(t) && showUnit(t) !== '%' ? ' ' + showUnit(t) : imp.dir && showUnit(t) === '%' ? ' points' : ''} since ${fmt(imp.from.date)}${imp.inRange ? ' — now on target' : ' — moving the right way'}` });
+      text: `${label(t)} ${imp.dir} ${imp.delta}${showUnit(t) && showUnit(t) !== '%' ? ' ' + showUnit(t) : imp.dir && showUnit(t) === '%' ? ' points' : ''} since ${fmt(imp.from.date)}${imp.inRange ? ' — now on target' : ' — moving the right way'}` });
   });
   // on-target highlights
   Object.entries(WIN_COPY).forEach(([id, [icon, text]], i) => {
     const x = latestOf(id); if (!x || x.f !== 'ok' || x.age > RECENT_DAYS || wins.some(w => w.test === id)) return;
+    if (id === 'home-bp-sys') { const d = latestOf('home-bp-dia'); if (d && d.f !== 'ok') return; }
     wins.push({ icon, text, test: id, value: `${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim(), score: 6 - i * 0.1 + (WEIGHT[id] || 1) * 0.3 });
   });
   if (typeof SCANS !== 'undefined') Object.keys(SCANS).forEach(id => { const st = scanStatus(id); if (st.tone === 'ok') wins.push({ icon: '🩻', text: `${SCANS[id].title.replace(/\s*\(.*\)/, '')}: normal`, go: 'procs', score: 7 }); });
@@ -141,7 +144,7 @@ function insights() {
     const stale = x.age > RECENT_DAYS, imp = improvement(t), lf = typeof labFlag === 'function' ? labFlag(t, x.r.value) : null;
     const sev = (WEIGHT[t.id] || 1) * Math.min(1, 0.25 + offBy(t, x.r.value)) * (stale ? 0.6 : 1) * (lf === 'normal' ? 0.8 : 1) * (imp ? 0.85 : 1);
     work.push({ test: t.id, score: sev, icon: x.f === 'high' ? '⬆️' : '⬇️',
-      title: `${short(t.name)} is ${x.f === 'high' ? 'above' : 'below'} target`,
+      title: `${label(t)} is ${x.f === 'high' ? 'above' : 'below'} target`,
       value: `${showVal(t, x.r.value)} ${showUnit(t)}`.trim(), target: targetText(t),
       why: TILE_PURPOSE[t.id] || t.description || '',
       notes: [imp ? `Improving: ${imp.dir} ${imp.delta} since ${fmt(imp.from.date)}` : '', lf === 'normal' ? 'Within the lab’s normal range — your target is stricter' : '', stale ? `Last checked ${fmt(x.r.date)}` : ''].filter(Boolean),
@@ -214,7 +217,7 @@ function areaDetail(a, ins, workCard) {
   }
   const ids = areaIds(a), items = ins.work.filter(w => (w.test && ids.includes(w.test)) || (w.scan && (a.scans || []).includes(w.scan)));
   const fa = a.fitness && ins.fa;
-  ids.map(latestOf).filter(x => x && x.f === 'ok').forEach(x => good.push(`<li class="win" data-test="${x.t.id}"><span class="w-ico" aria-hidden="true">✓</span><span class="w-txt">${esc(short(x.t.name))}${x.age > RECENT_DAYS ? ` <span class="small muted">· ${fmt(x.r.date)}</span>` : ''}</span><span class="w-val">${esc(`${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim())}</span></li>`));
+  ids.map(latestOf).filter(x => x && x.f === 'ok').forEach(x => good.push(`<li class="win" data-test="${x.t.id}"><span class="w-ico" aria-hidden="true">✓</span><span class="w-txt">${esc(label(x.t))}${x.age > RECENT_DAYS ? ` <span class="small muted">· ${fmt(x.r.date)}</span>` : ''}</span><span class="w-val">${esc(`${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim())}</span></li>`));
   (a.scans || []).filter(id => scanStatus(id).tone === 'ok').forEach(id => good.push(`<li class="win" data-go="procs"><span class="w-ico" aria-hidden="true">🩻</span><span class="w-txt">${esc(SCANS[id].title.replace(/\s*\(.*\)/, ''))}</span><span class="w-val">Normal</span></li>`));
   if (fa) (fa.diff <= 0 ? good : []).push(`<li class="win" data-go="body"><span class="w-ico" aria-hidden="true">🏃</span><span class="w-txt">Fitness age</span><span class="w-val">${fa.fa} (you’re ${fa.age})</span></li>`);
   const noTarget = ids.filter(id => resultsFor(id).length && latestOf(id)?.f === 'none').length;
