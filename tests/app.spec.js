@@ -233,3 +233,15 @@ test('encouragement: getting started, fewer tabs, focus goals and celebrations',
   await expect(page.locator('.rc-stats')).toContainText('results tracked');
   expect(errors).toEqual([]);
 });
+
+test('a celebration stays until it is closed', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => { db.settings.dob = '1990-05-01'; db.settings.sex = 'female'; db.settings.celebrated = {}; upsertResult('hdl', '2026-01-01', '40'); save(); });
+  await page.evaluate(() => { upsertResult('hdl', '2026-11-01', '60'); save(); });
+  const cel = page.locator('.celebrate');
+  await expect(cel).toContainText('HDL');
+  await page.waitForTimeout(8000);
+  await expect(cel).toBeVisible();
+  await cel.locator('.cel-x').click();
+  await expect(cel).toHaveCount(0);
+});

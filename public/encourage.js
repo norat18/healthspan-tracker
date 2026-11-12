@@ -151,8 +151,11 @@ function showCelebration(list) {
     <div class="cel-card" role="status"><span class="cel-ico" aria-hidden="true">${e.icon}</span><div><b>${esc(e.title)}</b><div class="small">${esc(e.text)}${more ? ` And ${more} more win${more > 1 ? 's' : ''} — see Going well.` : ''}</div></div>
     <button class="g-x cel-x" aria-label="Close">✕</button></div>`;
   document.body.appendChild(el);
-  el.querySelector('.cel-x').addEventListener('click', () => el.remove());
-  setTimeout(() => el.remove(), 7000);
+  // Stays until closed (✕ or Esc), so it isn't missed.
+  const closeIt = () => { el.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = ev => { if (ev.key === 'Escape' && !document.getElementById('modal')?.open) closeIt(); };
+  el.querySelector('.cel-x').addEventListener('click', closeIt);
+  document.addEventListener('keydown', onKey);
 }
 
 /* ---------- year recap ---------- */
