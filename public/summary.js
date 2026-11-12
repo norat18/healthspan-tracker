@@ -45,7 +45,7 @@ function tile(id) {
 
 /* ---------- insights: what's going well, what needs work ---------- */
 const AREAS = [
-  { key: 'heart', icon: '❤️', title: 'Heart & arteries', ids: ['ldl-nih', 'apob', 'lp-a', 'hs-crp', 'hdl', 'triglycerides', 'non-hdl'], scans: ['cimt', 'coronary-calcium-scan', 'coronary-ct-angiogram'], go: 'blood' },
+  { key: 'heart', icon: '❤️', title: 'Heart & arteries', ids: ['ldl-nih', 'apob', 'lp-a', 'hs-crp', 'hdl', 'triglycerides', 'non-hdl', 'home-bp-sys', 'home-bp-dia'], scans: ['cimt', 'coronary-calcium-scan', 'coronary-ct-angiogram'], go: 'blood' },
   { key: 'sugar', icon: '🍬', title: 'Blood sugar', ids: ['hemoglobin-a1c', 'fasting-insulin', 'glucose'], go: 'blood' },
   { key: 'body', icon: '💪', title: 'Body composition', ids: ['dexa-body-fat-pct', 'dexa-visceral-fat', 'dexa-almi', 'dexa-ag-ratio'], go: 'body' },
   { key: 'bone', icon: '🦴', title: 'Bones', ids: ['dexa-t-score', 'dexa-z-score'], go: 'body' },
@@ -55,7 +55,7 @@ const AREAS = [
 ];
 // How much each result matters when ranking what to work on (heart and blood sugar first).
 const WEIGHT = { 'ldl-nih': 3, 'apob': 3, 'lp-a': 3, 'hs-crp': 2.5, 'non-hdl': 2.5, 'hemoglobin-a1c': 3, 'fasting-insulin': 2.5, 'glucose': 2.5,
-  'dexa-visceral-fat': 2.5, 'dexa-body-fat-pct': 2, 'vo2-max': 2.5, 'resting-hr': 1.5, 'vitamin-d-total': 2, 'dexa-t-score': 2, 'hdl': 2, 'triglycerides': 2 };
+  'dexa-visceral-fat': 2.5, 'dexa-body-fat-pct': 2, 'vo2-max': 2.5, 'resting-hr': 1.5, 'home-rhr': 1.5, 'home-bp-sys': 2.5, 'home-bp-dia': 2, 'vitamin-d-total': 2, 'dexa-t-score': 2, 'hdl': 2, 'triglycerides': 2 };
 // Friendly words for a result that's on target.
 const WIN_COPY = {
   'hemoglobin-a1c': ['🍬', 'Blood sugar control is excellent'], 'lp-a': ['🧬', 'Low inherited heart risk'], 'hs-crp': ['🔥', 'Low inflammation'],
@@ -63,10 +63,19 @@ const WIN_COPY = {
   'ldl-nih': ['❤️', 'LDL cholesterol on target'], 'fasting-insulin': ['⚡', 'Insulin is low — your body handles sugar easily'], 'glucose': ['🍬', 'Healthy fasting blood sugar'],
   'dexa-t-score': ['🦴', 'Strong bones'], 'dexa-almi': ['💪', 'Good muscle for your size'], 'dexa-ag-ratio': ['🍐', 'Healthy fat distribution'],
   'vo2-max': ['🏃', 'Good cardio fitness'], 'egfr': ['🫘', 'Kidneys working well'], 'alt': ['🧪', 'Healthy liver'], 'ferritin': ['🩸', 'Healthy iron stores'],
-  'vitamin-b12': ['🥦', 'B12 on target'], 'tsh': ['🦋', 'Thyroid in range'], 'dexa-visceral-fat': ['🎯', 'Low visceral fat'], 'dexa-body-fat-pct': ['💪', 'Body fat on target'],
+  'vitamin-b12': ['🥦', 'B12 on target'], 'home-bp-sys': ['🩺', 'Healthy blood pressure'], 'resting-hr': ['💓', 'Healthy resting heart rate'], 'home-rhr': ['💓', 'Healthy resting heart rate'], 'tsh': ['🦋', 'Thyroid in range'], 'dexa-visceral-fat': ['🎯', 'Low visceral fat'], 'dexa-body-fat-pct': ['💪', 'Body fat on target'],
 };
 const RECENT_DAYS = 730;   // results older than 2 years don't count as current wins or problems
-const latestOf = id => { const t = testById(id); const r = t && resultsFor(id).at(-1); return t && r ? { t, r, f: flag(t, r.value), age: days(r.date, today()) } : null; };
+// The same measurement recorded two ways (e.g. resting heart rate from a fitness test and from home):
+// only the newest reading counts, so a better recent reading replaces an older one.
+const SAME_MEASURE = [['resting-hr', 'home-rhr']];
+const lastDate = id => resultsFor(id).at(-1)?.date || '';
+const supersededBy = id => (SAME_MEASURE.find(g => g.includes(id)) || []).find(o => o !== id && lastDate(o) > lastDate(id)) || null;
+const latestOf = id => {
+  const t = testById(id); const r = t && resultsFor(id).at(-1);
+  if (!t || !r || supersededBy(id)) return null;
+  return { t, r, f: flag(t, r.value), age: days(r.date, today()) };
+};
 /** Distance outside the target, relative to the target's size (0 = in range). */
 function offBy(t, v) {
   const n = num(v); if (n == null) return 0;
