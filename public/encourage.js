@@ -46,10 +46,7 @@ function nextStepCandidates(ins) {
   if (odBlood.length) out.push({ key: 'odblood:' + odBlood.length, icon: '🩸', title: `Catch up on ${odBlood.length} blood test${odBlood.length === 1 ? '' : 's'}`,
     text: `${odBlood.slice(0, 4).map(x => short(x.i.name)).join(', ')}${odBlood.length > 4 ? '…' : ''} — ask for ${odBlood.length === 1 ? 'it' : 'them'} at your next blood draw.`,
     btn: '<button class="btn primary" data-go="reminders">See reminders</button>' });
-  const goalIds = goals().map(g => g.id);
-  ins.work.filter(w => w.test && !goalIds.includes(w.test) && goalable(testById(w.test))).slice(0, 1).forEach(w => out.push({ key: 'goal:' + w.test, icon: '🎯',
-    title: `Make ${label(testById(w.test))} a focus goal`, text: `${w.title} (${w.value}). Track it with a progress bar and celebrate when you get there.`,
-    btn: `<button class="btn primary" data-enc="goal:${w.test}">Focus on this</button>` }));
+  // Ideas for focus goals live in the “Your focus” card, so they aren't repeated here.
   return out;
 }
 function nextStepCard(ins) {
