@@ -64,8 +64,8 @@ test('a new visitor can set up and use every screen without errors', async ({ pa
   await page.locator('.tabs [data-view="summary"]').click();
   // Summary: score, what's going well, what needs work, coming up, areas; details folded away
   await expect(page.locator('.sum-hero h2')).toBeVisible();
-  for (const h of ['✨ Going well', '🎯 Needs work', '📅 Coming up']) await expect(page.getByRole('heading', { name: h })).toBeVisible();
-  await expect(page.locator('.area')).toHaveCount(7);
+  for (const h of ['✨ Going well', '🌱 Next wins', '📅 Coming up']) await expect(page.getByRole('heading', { name: h })).toBeVisible();
+  await expect(page.locator('.area').first()).toBeVisible();
   await expect(page.locator('.sum-more .tiles').first()).toBeHidden();
   // An area card opens its own panel on the Summary (no tab switch); clicking again closes it
   await page.locator('[data-area="heart"]').click();
@@ -174,7 +174,7 @@ test('new results update the Summary score, areas and what needs work', async ({
 
   // High LDL, then a newer one on target
   await addResult('ldl-nih', '2026-01-10', '150');
-  await expect(area('heart')).toContainText('1 to work on');
+  await expect(area('heart')).toContainText('1 to improve');
   await expect(page.locator('#works')).toContainText('LDL');
   await addResult('ldl-nih', '2026-06-10', '90');
   await expect(area('heart')).toContainText('Looking good');
@@ -183,13 +183,53 @@ test('new results update the Summary score, areas and what needs work', async ({
 
   // Resting heart rate: a newer home reading replaces an older fitness-test value
   await addResult('resting-hr', '2026-03-01', '78');
-  await expect(area('fit')).toContainText('1 to work on');
+  await expect(area('fit')).toContainText('1 to improve');
   await addResult('home-rhr', '2026-06-01', '60');
   await expect(area('fit')).toContainText('Looking good');
 
   // Any tracked test counts, not just the headline ones (potassium isn't in the headline list)
   await addResult('potassium', '2026-06-10', '6.5');
-  await expect(area('organs')).toContainText('1 to work on');
+  await expect(area('organs')).toContainText('1 to improve');
   await expect(page.locator('.sum-hero')).toContainText('2 of 3');
+  expect(errors).toEqual([]);
+});
+
+test('encouragement: getting started, fewer tabs, focus goals and celebrations', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  // New person: a getting-started checklist, and only tabs that have something in them
+  await expect(page.locator('.next-step.start')).toContainText('0 of 4 done');
+  await expect(page.locator('.tabs [data-view="blood"]')).toBeHidden();
+  await expect(page.locator('.tabs [data-enc="showtabs"]')).toBeVisible();
+  await page.locator('.welcome #dob').fill('1990-05-01');
+  await page.locator('.welcome #sex').selectOption('female');
+  await expect(page.locator('.next-step.start')).toContainText('1 of 4 done');
+  // "Type them in" opens Bloodwork and shows all tabs
+  await page.locator('[data-enc="addbyhand"]').click();
+  await expect(page.locator('.tabs [data-view="blood"]')).toHaveClass(/active/);
+  await expect(page.locator('.tabs [data-enc="showtabs"]')).toBeHidden();
+
+  const add = async (id, date, value) => {
+    await page.evaluate(id => openTest(id), id);
+    await page.locator('#addone [name="date"]').fill(date);
+    await page.locator('#addone [name="value"]').fill(value);
+    await page.locator('#addone button').click();
+    await page.evaluate(() => document.getElementById('modal').open && document.getElementById('modal').close());
+    await page.locator('.tabs [data-view="summary"]').click();
+  };
+  await add('ldl-nih', '2026-01-10', '150');
+  await expect(page.locator('.celebrate')).toContainText('First results tracked');   // milestone
+  // Make LDL a focus goal from the idea chips
+  await page.locator('.goals [data-enc="goal:ldl-nih"]').click();
+  await expect(page.locator('.goal[data-test="ldl-nih"]')).toContainText('50 mg/dL to go');
+  // Improve it: progress bar moves, then reaching the target is celebrated
+  await add('ldl-nih', '2026-04-10', '120');
+  await expect(page.locator('.goal[data-test="ldl-nih"] .g-bar')).toHaveAttribute('aria-valuenow', '60');
+  await add('ldl-nih', '2026-07-10', '95');
+  await expect(page.locator('.goal[data-test="ldl-nih"]')).toContainText('On target');
+  await expect(page.locator('.celebrate')).toContainText(/Goal reached|on target/);
+  // Year recap opens
+  await page.locator('a[data-enc="recap"]').click();
+  await expect(page.locator('.rc-stats')).toContainText('results tracked');
   expect(errors).toEqual([]);
 });

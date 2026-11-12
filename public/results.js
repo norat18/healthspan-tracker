@@ -39,7 +39,7 @@ function miniTrend(t, rs) {
   const band = (t.low != null || t.high != null) ? (() => { const y1 = Y(t.high != null ? Math.min(t.high, mx) : mx), y2 = Y(t.low != null ? Math.max(t.low, mn) : mn); return y2 > y1 ? `<rect x="0" width="${W}" y="${y1}" height="${y2 - y1}" fill="var(--band)" rx="3"/>` : ''; })() : '';
   return `<svg class="mtrend" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-label="Trend">${band}
     <polyline points="${pts.map((p, i) => `${X(i)},${Y(p.v)}`).join(' ')}" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
-    ${pts.map((p, i) => { const f = FLAG_TONE[flag(t, p.r.value)]; return `<circle cx="${X(i)}" cy="${Y(p.v)}" r="${i === pts.length - 1 ? 3.6 : 2.6}" fill="${f === 'ok' ? 'var(--ok)' : f === 'bad' ? 'var(--bad)' : 'var(--accent)'}"><title>${fmt(p.r.date)}: ${esc(showVal(t, p.r.value))}</title></circle>`; }).join('')}</svg>`;
+    ${pts.map((p, i) => { const f = FLAG_TONE[flag(t, p.r.value)]; return `<circle cx="${X(i)}" cy="${Y(p.v)}" r="${i === pts.length - 1 ? 3.6 : 2.6}" fill="${f === 'ok' ? 'var(--ok)' : f === 'bad' ? 'var(--warn)' : 'var(--accent)'}"><title>${fmt(p.r.date)}: ${esc(showVal(t, p.r.value))}</title></circle>`; }).join('')}</svg>`;
 }
 
 /* ---------- cards ---------- */

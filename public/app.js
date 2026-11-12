@@ -266,6 +266,7 @@ function save(msg) {
   persist();
   if (typeof syncPushDue === 'function') syncPushDue();
   render(); if (msg) toast(msg);
+  if (typeof checkCelebrations === 'function') checkCelebrations();
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600); }
 
@@ -346,6 +347,8 @@ function render() {
   $('#view').innerHTML = ({ summary: () => vSummary(), myinfo: () => vMyInfo(), reminders: vReminders, blood: () => vBlood('blood'), body: () => vBlood('metric'), procs: vProcs, orders: vOrders, data: vData })[view]();
   document.querySelectorAll('.tabs button').forEach(b => { if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   makeKeyboardFriendly(document.getElementById('view'));
+  if (typeof applyTabVisibility === 'function') applyTabVisibility();
+  if (view === 'summary' && db.settings && !db.settings.celebrated && typeof checkCelebrations === 'function') checkCelebrations();   // first visit: record existing wins quietly
 }
 /** Clickable rows and cards that aren't buttons: reachable with Tab, usable with Enter/Space, announced as buttons. */
 function makeKeyboardFriendly(root) {
@@ -853,7 +856,7 @@ document.addEventListener('click', e => {
   else if (D.deltest) { if (confirm('Delete this test and all its results?')) { tomb('tests', D.deltest); db.results.filter(r => r.testId === D.deltest).forEach(r => tomb('results', r.testId + '|' + r.date)); db.tests = db.tests.filter(t => t.id !== D.deltest); db.results = db.results.filter(r => r.testId !== D.deltest); close(); save('Test deleted'); } }
   else if (D.delvisit) { const v = db.visits.find(x => x.id === D.delvisit); if (confirm('Delete this visit?')) { tomb('visits', v.id); db.visits = db.visits.filter(x => x !== v); save('Deleted'); openProc(v.procId); } }
   else if (D.delproc) { if (confirm('Delete this item and its history?')) { tomb('procedures', D.delproc); db.visits.filter(v => v.procId === D.delproc).forEach(v => tomb('visits', v.id)); db.procedures = db.procedures.filter(p => p.id !== D.delproc); db.visits = db.visits.filter(v => v.procId !== D.delproc); close(); save('Deleted'); } }
-  else if (D.ics !== undefined) { download('health-reminders.ics', icsText(), 'text/calendar'); toast('Calendar file downloaded — open it to add the reminders'); }
+  else if (D.ics !== undefined) { db.settings.icsDownloaded = true; persist(); download('health-reminders.ics', icsText(), 'text/calendar'); toast('Calendar file downloaded — open it to add the reminders'); }
   else if (D.export !== undefined) { db.settings.lastBackup = today(); download(`health-tracker-backup-${today()}.json`, JSON.stringify(db, null, 1), 'application/json'); save('Backup exported'); }
   else if (D.reset !== undefined) { if (confirm('Erase all your results, visits and notes? This can’t be undone.')) { const keep = { dob: db.settings.dob, sex: db.settings.sex, owner: db.settings.owner }; db = fresh(); Object.assign(db.settings, keep); save('Started over'); } }
   else if (D.notify !== undefined) { Notification.requestPermission().then(() => { render(); notifyIfDue(); }); }

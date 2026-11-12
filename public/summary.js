@@ -179,7 +179,7 @@ function areaStatus(a, ins) {
   const off = xs.filter(x => ['high', 'low'].includes(x.f)).length + scans.filter(s => ['warn', 'bad'].includes(s.tone)).length;
   const fa = a.fitness && ins.fa;
   if (!xs.length && !scans.length && !fa) return { tone: 'none', text: ids.some(id => resultsFor(id).length) ? 'Results logged' : 'No results yet' };
-  if (off) return { tone: 'work', text: `${off} to work on` };
+  if (off) return { tone: 'work', text: `${off} to improve` };
   if (fa && fa.diff > 0) return { tone: 'work', text: `Fitness age ${fa.fa}` };
   const stale = xs.length && xs.every(x => x.age > RECENT_DAYS);
   return stale ? { tone: 'stale', text: 'Due for a recheck' } : { tone: 'good', text: fa ? `Fitness age ${fa.fa}` : 'Looking good' };
@@ -246,7 +246,7 @@ function vSummary() {
   const scanStats = typeof SCANS !== 'undefined' ? Object.keys(SCANS).map(scanStatus).filter(s => s.tone) : [];
   const okN = key.filter(x => x.f === 'ok').length + scanStats.filter(s => s.tone === 'ok').length, totalN = key.length + scanStats.length;
   const pct = totalN ? Math.round(okN / totalN * 100) : 0;
-  const mood = !totalN ? null : pct >= 85 ? ['Crushing it 💪', 'good'] : pct >= 65 ? ['Mostly on track 👍', 'good'] : pct >= 45 ? ['Some areas to work on 🌱', 'mid'] : ['Plenty to work on — you’ve got this 🌱', 'work'];
+  const mood = !totalN ? null : pct >= 85 ? ['Crushing it 💪', 'good'] : pct >= 65 ? ['Mostly on track 👍', 'good'] : pct >= 45 ? ['Some areas to work on 🌱', 'mid'] : ['Lots of room to grow — you’ve got this 🌱', 'work'];
   const hasData = db.results.length > 0;
   // coming up: next 3, with same-day bloodwork grouped
   const up = [], seen = {};
@@ -275,30 +275,37 @@ function vSummary() {
     <div class="hero-txt">
       <div class="hero-hi">${first ? `Hi ${esc(first)} 👋` : 'Your health at a glance'}</div>
       <h2>${mood ? mood[0] : hasData ? 'Add results with targets to see your score' : 'Let’s get your health story started'}</h2>
-      <p>${totalN ? `<b>${okN} of ${totalN}</b> key results are on target${ins.work.length ? `, and there ${ins.work.length === 1 ? 'is <b>1 thing</b>' : `are <b>${Math.min(ins.work.length, 3)}${ins.work.length > 3 ? '+' : ''} things</b>`} worth your attention` : ' — nothing needs attention right now'}.`
+      <p>${totalN ? `<b>${okN} of ${totalN}</b> key results are on target${ins.work.length ? `, with <b>${ins.work.length} next win${ins.work.length === 1 ? '' : 's'}</b> to go after` : ' — nothing to work on right now'}.`
         : 'Import a lab, DEXA or fitness report, or add results by hand — your summary builds itself.'}</p>
       <div class="muted small">${fmt(T)}${age != null ? ` · age ${age}` : ''}</div>
     </div>
-    ${totalN ? scoreRing(pct, mood[1]) : `<div class="hero-start"><button class="btn primary" data-labimport>Import a report</button><button class="btn" data-pastdates>Add past checkups</button></div>`}
+    ${totalN ? scoreRing(pct, mood[1]) : typeof startActive === 'function' && startActive() ? '' : `<div class="hero-start"><button class="btn primary" data-labimport>Import a report</button><button class="btn" data-pastdates>Add past checkups</button></div>`}
   </section>
+
+  ${typeof nextStepCard === 'function' ? nextStepCard(ins) : ''}
+  ${typeof recapCard === 'function' ? recapCard() : ''}
+  ${typeof goalsCard === 'function' ? goalsCard(ins) : ''}
 
   ${hasData || ins.work.length ? `<div class="sum-cols">
     <section class="card sum-card"><div class="card-h"><h3>✨ Going well</h3>${ins.wins.length > 5 ? `<span class="small muted">top 5 of ${ins.wins.length}</span>` : ''}</div>
       <div class="card-b">${ins.wins.length ? `<ul class="wins">${ins.wins.slice(0, 5).map(winRow).join('')}</ul>` : '<p class="small muted">Wins will show up here as you add results.</p>'}</div></section>
-    <section class="card sum-card"><div class="card-h"><h3>🎯 Needs work</h3>${ins.work.length > 3 ? `<button type="button" class="link-btn small" data-wkmore aria-controls="works" aria-expanded="${workOpen}">${workOpen ? 'Show less' : `+${ins.work.length - 3} more`}</button>` : ''}</div>
-      <div class="card-b">${ins.work.length ? `<ol class="works${workOpen ? ' open' : ''}" id="works" data-more="${ins.work.length - 3}">${ins.work.map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing needs attention right now.</p>'}</div></section>
+    <section class="card sum-card"><div class="card-h"><h3>🌱 Next wins</h3>${ins.work.length > 3 ? `<button type="button" class="link-btn small" data-wkmore aria-controls="works" aria-expanded="${workOpen}">${workOpen ? 'Show less' : `+${ins.work.length - 3} more`}</button>` : ''}</div>
+      <div class="card-b">${ins.work.length ? `<ol class="works${workOpen ? ' open' : ''}" id="works" data-more="${ins.work.length - 3}">${ins.work.map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing to work on right now — enjoy it.</p>'}</div></section>
   </div>` : ''}
 
   <section class="card sum-card" style="margin-top:12px"><div class="card-h"><h3>📅 Coming up</h3><a href="#" data-go="reminders" class="small">All reminders</a></div>
     <div class="card-b"><ul class="list">${up.slice(0, 3).map(u => `<li class="row ${u.i ? 'click' : ''}" ${u.i ? `data-proc="${u.i.id}"` : 'data-go="blood"'}><div class="main"><div class="title">${u.blood ? `Bloodwork · ${u.n} test${u.n > 1 ? 's' : ''}` : esc(u.i.name)}${u.i && needsBooking(u.i, schedule(u.i)) ? ' <span class="tag-book">Not booked</span>' : u.i && u.i.bookedFor === u.due ? ' <span class="tag-booked">Booked</span>' : ''}</div></div><span class="small muted">${fmt(u.due)} · ${rel(days(T, u.due))}</span></li>`).join('') || '<li class="row muted">Nothing scheduled yet.</li>'}</ul>
       <div class="actions" style="margin-top:10px">${visitSoon ? `<button class="btn primary" data-visitsheet="wellness-exam">Prepare for your ${esc(fmt(ws.due))} visit</button>` : ''}<button class="btn" data-labimport>Import results</button>${never ? `<button class="btn" data-pastdates>Add ${never} past date${never === 1 ? '' : 's'}</button>` : ''}</div></div></section>
 
-  <h3 class="areas-h">Your areas</h3>
-  <div class="areas">${AREAS.map(a => { const st = areaStatus(a, ins); return `<button type="button" class="area ${st.tone}${areaOpen === a.key ? ' sel' : ''}" data-area="${a.key}" aria-controls="area-${a.key}" aria-expanded="${areaOpen === a.key}"><span class="a-ico" aria-hidden="true">${a.icon}</span><span class="a-txt"><b>${esc(a.title)}</b><span>${esc(st.text)}</span></span><span class="a-dot" aria-hidden="true"></span></button>`; }).join('')}</div>
+  ${(() => { const shown = AREAS.map(a => [a, areaStatus(a, ins)]).filter(([, st]) => st.tone !== 'none'), hiddenN = AREAS.length - shown.length;
+    return shown.length ? `<h3 class="areas-h">Your areas</h3>
+  <div class="areas">${shown.map(([a, st]) => `<button type="button" class="area ${st.tone}${areaOpen === a.key ? ' sel' : ''}" data-area="${a.key}" aria-controls="area-${a.key}" aria-expanded="${areaOpen === a.key}"><span class="a-ico" aria-hidden="true">${a.icon}</span><span class="a-txt"><b>${esc(a.title)}</b><span>${esc(st.text)}</span></span><span class="a-dot" aria-hidden="true"></span></button>`).join('')}</div>
+  ${hiddenN ? `<p class="small muted" style="margin:6px 0 0">${hiddenN} more area${hiddenN === 1 ? '' : 's'} will appear as you add results.</p>` : ''}` : ''; })()}
   ${AREAS.map(a => `<section class="card area-panel" id="area-${a.key}" data-panel="${a.key}" ${areaOpen === a.key ? '' : 'hidden'} aria-label="${esc(a.title)}">
     <div class="card-h"><h3>${a.icon} ${esc(a.title)}</h3><a href="#" class="small" data-go="${a.go}">Open ${a.go === 'body' ? 'Body &amp; Fitness' : a.go === 'reminders' ? 'Reminders' : 'Bloodwork'} →</a></div>
     <div class="card-b">${areaDetail(a, ins, workCard)}</div></section>`).join('')}
 
+  ${db.results.length ? '<p class="small" style="margin:16px 0 0"><a href="#" data-enc="recap">🎁 See your year in health</a></p>' : ''}
   <details class="sum-more"><summary>See all key numbers</summary>
     ${SUMMARY_GROUPS.map(g => `<section class="sum-group"><div class="sg-h"><h3>${esc(g.title)}</h3><span class="muted small">${esc(g.why)}</span></div>
       <div class="tiles">${g.ids.map(tile).join('')}${(g.scans || []).map(scanTile).join('')}</div></section>`).join('')}
