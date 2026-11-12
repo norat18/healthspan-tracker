@@ -148,6 +148,7 @@ function onRemoteChange(remote) {
   applyImports(db); if (typeof applyAgeNorms === 'function') applyAgeNorms(db);
   try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { }
   if (!modal.open) { render(); toast('Updated with changes from your other device'); }
+  else cloudSync.renderOnClose = true;                  // refresh the page as soon as the open window closes
 }
 window.addEventListener('online', () => { if (cloudSync.user && (cloudSync.pending || cloudSync.error)) pushToCloud(); });
 /** Load your account's copy. First sign-in: this browser's data moves into your account. */
@@ -255,7 +256,8 @@ function schedule(item) {
     const start = addMonths(dob, item.startAge * 12), d0 = days(T, start);
     if (d0 > 0) return { last, due: start, days: d0, why: 'age', state: d0 <= db.settings.soonDays ? 'soon' : 'later', label: `Starts at age ${item.startAge}${fam ? ' (family history)' : ''} · ${fmt(start)} (${rel(d0)})`, fam: fam?.why };
   }
-  let due = item.nextDue || null, why = 'scheduled';
+  // A date set earlier stops counting once a newer result or visit is logged; the repeat interval takes over.
+  let due = item.nextDue && !(last && item.nextDue <= last) ? item.nextDue : null, why = 'scheduled';
   if (!due && item.oneTime) { due = T; why = 'never'; }
   else if (!due && item.frequencyMonths) { due = last ? addMonths(last, item.frequencyMonths) : T; why = last ? 'repeat' : 'never'; }
   if (!due) return { last, due: null, state: 'unscheduled', label: 'Not scheduled' };
@@ -529,7 +531,10 @@ function open(html) {
   const h = body.querySelector('h2'); if (h) { h.id = 'modal-title'; modal.setAttribute('aria-labelledby', 'modal-title'); }
   if (!modal.open) { lastFocus = document.activeElement; modal.showModal(); }
 }
-modal.addEventListener('close', () => { if (lastFocus && document.contains(lastFocus)) lastFocus.focus(); });
+modal.addEventListener('close', () => {
+  if (cloudSync.renderOnClose) { cloudSync.renderOnClose = false; render(); toast('Updated with changes from your other device'); }
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+});
 function close() { modal.close(); }
 const head = (title, sub) => `<div class="m-h"><div><h2 style="margin:0">${title}</h2>${sub ? `<div class="muted small">${sub}</div>` : ''}</div><button class="x" data-close aria-label="Close">×</button></div>`;
 

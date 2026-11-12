@@ -51,8 +51,26 @@ const AREAS = [
   { key: 'bone', icon: '🦴', title: 'Bones', ids: ['dexa-t-score', 'dexa-z-score'], go: 'body' },
   { key: 'fit', icon: '🏃', title: 'Fitness', ids: ['vo2-max', 'resting-hr', 'home-rhr'], fitness: true, go: 'body' },
   { key: 'organs', icon: '🧪', title: 'Organs & nutrients', ids: ['alt', 'ast', 'egfr', 'tsh', 'vitamin-d-total', 'ferritin', 'vitamin-b12', 'folate'], go: 'blood' },
-  { key: 'care', icon: '🩺', title: 'Checkups & vaccines', care: true, go: 'reminders' },
+  { key: 'care', icon: '🩺', title: 'Checkups & scans', care: true, scans: ['full-body-mri'], go: 'reminders' },
 ];
+/** Which area a tracked test belongs to, so every result counts (not just the headline ones above). */
+function areaOf(t) {
+  const listed = AREAS.find(a => (a.ids || []).includes(t.id)); if (listed) return listed.key;
+  if (t.groupWith || t.kind === 'scan') return null;            // grouped duplicates and scan details are counted elsewhere
+  const panel = t.panel || '', id = t.id;
+  if (t.kind === 'metric') {
+    if (/bone/i.test(panel) || /bmd|bmc|t-score|z-score/.test(id)) return 'bone';
+    if (/bp-|blood-pressure/.test(id)) return 'heart';
+    if (/fitness|metabolism|vo2/i.test(panel) || /rhr|hrv|vo2|grip|steps/.test(id)) return 'fit';
+    return 'body';
+  }
+  if (/screening/i.test(panel)) return null;                     // one-time screenings belong with checkups
+  if (/lipid|cardio|inflammation/i.test(panel)) return 'heart';
+  if (/glucose|insulin|a1c/.test(id)) return 'sugar';
+  return 'organs';
+}
+/** All tests in an area: the headline ones plus any other tracked test that belongs there. */
+const areaIds = a => a.care ? [] : [...new Set([...(a.ids || []), ...db.tests.filter(t => areaOf(t) === a.key).map(t => t.id)])];
 // How much each result matters when ranking what to work on (heart and blood sugar first).
 const WEIGHT = { 'ldl-nih': 3, 'apob': 3, 'lp-a': 3, 'hs-crp': 2.5, 'non-hdl': 2.5, 'hemoglobin-a1c': 3, 'fasting-insulin': 2.5, 'glucose': 2.5,
   'dexa-visceral-fat': 2.5, 'dexa-body-fat-pct': 2, 'vo2-max': 2.5, 'resting-hr': 1.5, 'home-rhr': 1.5, 'home-bp-sys': 2.5, 'home-bp-dia': 2, 'vitamin-d-total': 2, 'dexa-t-score': 2, 'hdl': 2, 'triglycerides': 2 };
@@ -149,13 +167,15 @@ function insights() {
 function areaStatus(a, ins) {
   if (a.care) {
     const od = ins.overdue.length, known = ins.items.filter(x => isProc(x.i) && x.s.last).length;
-    return od ? { tone: 'work', text: `${od} overdue` } : known ? { tone: 'good', text: 'Up to date' } : { tone: 'none', text: 'Add past dates' };
+    const scanOff = (a.scans || []).filter(id => ['warn', 'bad'].includes(scanStatus(id).tone)).length;
+    const parts = [od && `${od} overdue`, scanOff && `${scanOff} scan finding${scanOff === 1 ? '' : 's'}`].filter(Boolean);
+    return parts.length ? { tone: 'work', text: parts.join(' · ') } : known ? { tone: 'good', text: 'Up to date' } : { tone: 'none', text: 'Add past dates' };
   }
-  const xs = a.ids.map(latestOf).filter(Boolean).filter(x => x.f !== 'none');
+  const ids = areaIds(a), xs = ids.map(latestOf).filter(Boolean).filter(x => x.f !== 'none');
   const scans = (a.scans || []).map(id => scanStatus(id)).filter(s => s.tone);
   const off = xs.filter(x => ['high', 'low'].includes(x.f)).length + scans.filter(s => ['warn', 'bad'].includes(s.tone)).length;
   const fa = a.fitness && ins.fa;
-  if (!xs.length && !scans.length && !fa) return { tone: 'none', text: a.ids.some(id => resultsFor(id).length) ? 'Results logged' : 'No results yet' };
+  if (!xs.length && !scans.length && !fa) return { tone: 'none', text: ids.some(id => resultsFor(id).length) ? 'Results logged' : 'No results yet' };
   if (off) return { tone: 'work', text: `${off} to work on` };
   if (fa && fa.diff > 0) return { tone: 'work', text: `Fitness age ${fa.fa}` };
   const stale = xs.length && xs.every(x => x.age > RECENT_DAYS);
@@ -186,16 +206,18 @@ function areaDetail(a, ins, workCard) {
     ins.overdue.forEach(x => work.push(`<li class="row click" ${isProc(x.i) ? `data-proc="${x.i.id}"` : `data-test="${x.i.id}"`}><div class="main"><div class="title">${esc(x.i.name)}</div></div><span class="small v-high">${esc(x.s.label)}</span></li>`));
     ins.items.filter(x => isProc(x.i) && x.s.last && x.s.state !== 'overdue').forEach(x => good.push(`<li class="row click" data-proc="${x.i.id}"><div class="main"><div class="title">✓ ${esc(x.i.name)}</div></div><span class="small muted">${esc(x.s.label)}</span></li>`));
     const never = ins.items.filter(x => x.s.state === 'never' && isProc(x.i)).length;
-    return `${work.length ? `<h4>To work on</h4><ul class="list">${work.join('')}</ul>` : '<p class="nothing">🎉 Nothing overdue.</p>'}
+    const scanWork = ins.work.filter(w => w.scan && (a.scans || []).includes(w.scan));
+    (a.scans || []).filter(id => scanStatus(id).tone === 'ok').forEach(id => good.unshift(`<li class="row click" data-go="procs"><div class="main"><div class="title">✓ ${esc(SCANS[id].title.replace(/\s*\(.*\)/, ''))}: normal</div></div></li>`));
+    return `${scanWork.length ? `<h4>Scan findings</h4><ol class="works open">${scanWork.map(workCard).join('')}</ol>` : ''}${work.length ? `<h4>To work on</h4><ul class="list">${work.join('')}</ul>` : '<p class="nothing">🎉 Nothing overdue.</p>'}
       ${good.length ? `<h4>Up to date</h4><ul class="list">${good.slice(0, 8).join('')}</ul>${good.length > 8 ? `<p class="small muted">and ${good.length - 8} more</p>` : ''}` : ''}
       ${never ? `<p class="small" style="margin-top:8px"><a href="#" data-pastdates>Add ${never} past date${never === 1 ? '' : 's'}</a> so reminders are accurate.</p>` : ''}`;
   }
-  const items = ins.work.filter(w => (w.test && a.ids.includes(w.test)) || (w.scan && (a.scans || []).includes(w.scan)));
+  const ids = areaIds(a), items = ins.work.filter(w => (w.test && ids.includes(w.test)) || (w.scan && (a.scans || []).includes(w.scan)));
   const fa = a.fitness && ins.fa;
-  a.ids.map(latestOf).filter(x => x && x.f === 'ok').forEach(x => good.push(`<li class="win" data-test="${x.t.id}"><span class="w-ico" aria-hidden="true">✓</span><span class="w-txt">${esc(short(x.t.name))}${x.age > RECENT_DAYS ? ` <span class="small muted">· ${fmt(x.r.date)}</span>` : ''}</span><span class="w-val">${esc(`${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim())}</span></li>`));
+  ids.map(latestOf).filter(x => x && x.f === 'ok').forEach(x => good.push(`<li class="win" data-test="${x.t.id}"><span class="w-ico" aria-hidden="true">✓</span><span class="w-txt">${esc(short(x.t.name))}${x.age > RECENT_DAYS ? ` <span class="small muted">· ${fmt(x.r.date)}</span>` : ''}</span><span class="w-val">${esc(`${showVal(x.t, x.r.value)} ${showUnit(x.t)}`.trim())}</span></li>`));
   (a.scans || []).filter(id => scanStatus(id).tone === 'ok').forEach(id => good.push(`<li class="win" data-go="procs"><span class="w-ico" aria-hidden="true">🩻</span><span class="w-txt">${esc(SCANS[id].title.replace(/\s*\(.*\)/, ''))}</span><span class="w-val">Normal</span></li>`));
   if (fa) (fa.diff <= 0 ? good : []).push(`<li class="win" data-go="body"><span class="w-ico" aria-hidden="true">🏃</span><span class="w-txt">Fitness age</span><span class="w-val">${fa.fa} (you’re ${fa.age})</span></li>`);
-  const noTarget = a.ids.filter(id => resultsFor(id).length && latestOf(id)?.f === 'none').length;
+  const noTarget = ids.filter(id => resultsFor(id).length && latestOf(id)?.f === 'none').length;
   if (!items.length && !good.length) return `<p class="small muted">No results with a target yet. <a href="#" data-labimport>Import a report</a> or add results in <a href="#" data-go="${a.go}">${a.go === 'body' ? 'Body &amp; Fitness' : 'Bloodwork'}</a>.</p>`;
   return `${items.length ? `<h4>To work on</h4><ol class="works open">${items.map(workCard).join('')}</ol>` : '<p class="nothing">🎉 Nothing to work on here.</p>'}
     ${fa && fa.diff > 0 ? `<p class="small">Your fitness age is <b>${fa.fa}</b>, ${fa.diff} year${fa.diff === 1 ? '' : 's'} older than you — raising VO2 max is the biggest lever.</p>` : ''}
@@ -217,7 +239,7 @@ function vSummary() {
   const first = (cloudSync.user?.displayName || '').split(' ')[0];
   const ins = insights();
   // Score: share of key results (current, with a target) that are on target, plus scans with results.
-  const key = AREAS.flatMap(a => a.ids || []).map(latestOf).filter(x => x && x.f !== 'none' && x.age <= RECENT_DAYS);
+  const key = [...new Set(AREAS.flatMap(areaIds))].map(latestOf).filter(x => x && x.f !== 'none' && x.age <= RECENT_DAYS);
   const scanStats = typeof SCANS !== 'undefined' ? Object.keys(SCANS).map(scanStatus).filter(s => s.tone) : [];
   const okN = key.filter(x => x.f === 'ok').length + scanStats.filter(s => s.tone === 'ok').length, totalN = key.length + scanStats.length;
   const pct = totalN ? Math.round(okN / totalN * 100) : 0;

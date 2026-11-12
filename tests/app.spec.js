@@ -156,3 +156,40 @@ test('a scanned MRI report fills the MRI card', async ({ page }, info) => {
   await expect(page.locator('.scan', { hasText: 'Full-body MRI' })).toContainText('Mild');
   expect(errors).toEqual([]);
 });
+
+test('new results update the Summary score, areas and what needs work', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('.welcome #dob').fill('1990-05-01');
+  await page.locator('.welcome #sex').selectOption('female');
+  const addResult = async (id, date, value) => {
+    await page.evaluate(id => openTest(id), id);
+    await page.locator('#addone [name="date"]').fill(date);
+    await page.locator('#addone [name="value"]').fill(value);
+    await page.locator('#addone button').click();
+    await page.evaluate(() => document.getElementById('modal').open && document.getElementById('modal').close());
+    await page.locator('.tabs [data-view="summary"]').click();
+  };
+  const area = key => page.locator(`[data-area="${key}"]`);
+
+  // High LDL, then a newer one on target
+  await addResult('ldl-nih', '2026-01-10', '150');
+  await expect(area('heart')).toContainText('1 to work on');
+  await expect(page.locator('#works')).toContainText('LDL');
+  await addResult('ldl-nih', '2026-06-10', '90');
+  await expect(area('heart')).toContainText('Looking good');
+  await expect(page.locator('#works')).toHaveCount(0);
+  await expect(page.locator('.sum-cols .wins')).toContainText('now on target');
+
+  // Resting heart rate: a newer home reading replaces an older fitness-test value
+  await addResult('resting-hr', '2026-03-01', '78');
+  await expect(area('fit')).toContainText('1 to work on');
+  await addResult('home-rhr', '2026-06-01', '60');
+  await expect(area('fit')).toContainText('Looking good');
+
+  // Any tracked test counts, not just the headline ones (potassium isn't in the headline list)
+  await addResult('potassium', '2026-06-10', '6.5');
+  await expect(area('organs')).toContainText('1 to work on');
+  await expect(page.locator('.sum-hero')).toContainText('2 of 3');
+  expect(errors).toEqual([]);
+});
