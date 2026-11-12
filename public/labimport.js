@@ -19,6 +19,7 @@ const LAB_ALIASES = {
   'lp-pla2': ['Lp PLA2 Activity', 'Lp-PLA2 Activity', 'Lp-PLA2'], 'nt-probnp': ['NT proBNP', 'NT-proBNP', 'proBNP, N-terminal'],
   'fibrinogen': ['Fibrinogen Activity, Clauss', 'Fibrinogen Activity', 'Fibrinogen'], 'troponin-hs': ['Troponin I, High Sensitivity', 'Troponin I, hs', 'hs-Troponin I'],
   'il-6': ['Interleukin 6 (IL 6), Serum', 'Interleukin 6, Serum', 'Interleukin-6', 'IL-6'], 'nmr-lipoprotein-particle-count': ['LDL P', 'LDL-P', 'LDL Particle Number'],
+  'omega-3-index': ['EPA+DPA+DHA', 'Omega-3 Index', 'OmegaCheck'],
   'vitamin-d3': ['Vitamin D, 25-OH, D3', '25-Hydroxyvitamin D3'], 'vitamin-d2': ['Vitamin D, 25-OH, D2', '25-Hydroxyvitamin D2'],
   // tests people may have added themselves (used only when that test exists in their tracker)
   'iron': ['Iron, Total', 'Iron'], 'tibc': ['Iron Binding Capacity', 'TIBC'], 'iron-saturation': ['% Saturation', 'Iron Saturation', 'Transferrin Saturation'],
@@ -122,6 +123,28 @@ function parseQuestStyle(text) {
     i = next;
   }
   return { found: [...found.values()], missed: [...missed.values()] };
+}
+/** A lab's CSV export with one row per result (Ulta Lab Tests / Quest: CollectionDate, ResultName, Result, UofM, ResultRange…)
+    → { date, found, missed } in the same shapes as parseQuestStyle, or null if this isn't such a file. Pending (blank) rows are skipped. */
+function parseLabCsv(text) {
+  const rows = csvRows(String(text || '').replace(/^\uFEFF/, '')); if (rows.length < 2) return null;
+  const h = rows[0].map(x => x.trim().toLowerCase()), col = (...ns) => h.findIndex(x => ns.includes(x));
+  const iName = col('resultname', 'result name', 'test', 'test name', 'component'), iVal = col('result', 'value'), iUnit = col('uofm', 'units', 'unit'),
+    iRange = col('resultrange', 'reference range', 'range', 'referencerange'), iDate = col('collectiondate', 'collection date', 'collected', 'date');
+  if (iName < 0 || iVal < 0) return null;
+  const idx = aliasIndex(), found = new Map(), missed = new Map(); let date = null;
+  for (const r of rows.slice(1)) {
+    const name = (r[iName] || '').trim(), raw = (r[iVal] || '').trim().replace(/\s+(?:H|L|HH|LL|A)$/, '');
+    if (!date && iDate >= 0) { const m = (r[iDate] || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})|^(\d{4})-(\d{2})-(\d{2})/); if (m) date = usableDate(m[1] ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : `${m[4]}-${m[5]}-${m[6]}`); }
+    if (!name || !(VALUE.test(raw) || QUAL.test(raw))) continue;    // blank = still pending; "SEE NOTE:" = nothing to save
+    const value = raw.replace(/\s+/g, ''), unit = iUnit >= 0 ? (r[iUnit] || '').replace(/\(calc\)/i, '').trim() : '', rt = iRange >= 0 ? (r[iRange] || '').trim() : '';
+    const q = rt ? qsRange(`${rt} ${unit}`) : null, range = q && (q.low != null || q.high != null) ? { ...q, unit } : null;
+    const id = idx.get(normName(name));
+    if (id) { if (!found.has(id)) found.set(id, { testId: id, value, source: name, range }); }
+    else if (!missed.has(normName(name))) missed.set(normName(name), { name, value, range, unit });
+  }
+  if (!found.size && !missed.size && !date) return null;
+  return { date, found: [...found.values()].filter(x => testById(x.testId)), missed: [...missed.values()] };
 }
 /** A friendly name for a test the tracker doesn't have yet: "IRON, TOTAL" → "Iron, Total", keeping "MCV", "ALT"… */
 const ABBR = new Set(['ALT', 'AST', 'BUN', 'HDL', 'LDL', 'EPA', 'DHA', 'DPA', 'CBC', 'TSH', 'IGF', 'DHEA', 'PSA', 'INR']);
@@ -273,8 +296,8 @@ function openLabImport() {
   labFound = []; labMissed = [];
   open(`${head('Import results', 'Lab, DEXA or fitness reports — you review everything before it’s saved')}
   <div class="m-b">
-    <label class="drop" id="dropzone"><input type="file" id="labfiles" accept="application/pdf,.pdf,.txt,image/*" multiple hidden>
-      <b>Drop PDFs or photos of reports here</b> or click to choose<br><span class="small muted">Text PDFs (like MyChart) are read exactly. Scanned PDFs and photos are read with text recognition that runs on your device — nothing is uploaded — so double-check those values.</span></label>
+    <label class="drop" id="dropzone"><input type="file" id="labfiles" accept="application/pdf,.pdf,.csv,text/csv,.txt,image/*" multiple hidden>
+      <b>Drop PDFs, CSV exports or photos of reports here</b> or click to choose<br><span class="small muted">Text PDFs (like MyChart) are read exactly. Scanned PDFs and photos are read with text recognition that runs on your device — nothing is uploaded — so double-check those values.</span></label>
     <div id="labstatus" class="small muted" role="status" style="margin-top:8px"></div>
     <details class="report" style="margin-top:12px"><summary>Or paste text from a report</summary>
       <textarea id="labpaste" placeholder="Copy the results page from MyChart and paste it here"></textarea>
@@ -294,7 +317,13 @@ async function readLabFiles(files) {
     try {
       status(`Reading ${f.name}…`);
       let r;
-      if (/\.txt$/i.test(f.name)) r = { text: await f.text(), ocr: false };
+      if (/\.csv$/i.test(f.name) || f.type === 'text/csv') {
+        const c = parseLabCsv(await f.text());
+        if (c && !c.found.length && !c.missed.length) { labFound.push({ file: f.name, error: 'No finished results in this file yet — they may still be pending at the lab.' }); renderLabReview(); continue; }
+        if (c) { addLabResults(c.date, c.found, c.missed, f.name); continue; }
+        r = { text: await f.text(), ocr: false };
+      }
+      else if (/\.txt$/i.test(f.name)) r = { text: await f.text(), ocr: false };
       else if (/^image\//.test(f.type) || /\.(jpe?g|png|heic|webp|gif|bmp|tiff?)$/i.test(f.name)) r = { text: await ocrImage(f, f.name, status), ocr: true };
       else r = await pdfText(f, status);
       addLabText(r.text, f.name, r.ocr);
@@ -304,9 +333,12 @@ async function readLabFiles(files) {
   if (ocrWorker) { ocrWorker.terminate(); ocrWorker = null; }
 }
 function addLabText(text, file, ocr = false) {
-  const date = findDate(text), found = [...parseLabText(text), ...parseMetricText(text)];
-  (parseLabText.missed || []).forEach(x => { if (!labMissed.some(y => normName(y.name) === normName(x.name))) labMissed.push({ ...x, file, date }); });
-  if (!found.length && !labMissed.length) labFound.push({ file, error: text.trim().length < 40 ? 'No text found in this file.' : 'No recognizable results found — you can add values by hand below.' });
+  const found = [...parseLabText(text), ...parseMetricText(text)];
+  addLabResults(findDate(text), found, parseLabText.missed || [], file, ocr, text.trim().length < 40);
+}
+function addLabResults(date, found, missed, file, ocr = false, noText = false) {
+  missed.forEach(x => { if (!labMissed.some(y => normName(y.name) === normName(x.name))) labMissed.push({ ...x, file, date }); });
+  if (!found.length && !labMissed.length) labFound.push({ file, error: noText ? 'No text found in this file.' : 'No recognizable results found — you can add values by hand below.' });
   found.forEach(f => { labFound = labFound.filter(x => !(x.testId === f.testId && x.date === date)); labFound.push({ ...f, file, date, ocr }); });
   renderLabReview();
 }

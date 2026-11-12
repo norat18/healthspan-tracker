@@ -71,6 +71,28 @@ test('lab import reads values, ranges and the collection date', () => {
   assert.equal(found['sti-chlamydia'].value, 'Negative');
 });
 
+/* ---- lab CSV exports (one row per result), made-up values ---- */
+{ const hs = read('habits.js'); vm.runInContext(hs.slice(hs.indexOf('function csvRows'), hs.indexOf('/** A food-log CSV')), ctx); }
+const LABCSV = `PatientOrderID,SpecimenNumber,CollectionDate,ItemName,ResultName,Result,UofM,ResultRange,Comments
+1,X1,03/05/2026 08:10:00,"Lipid Panel",LDL-CHOLESTEROL,,,,null
+1,X1,03/05/2026 08:10:00,"Lipid Panel","CHOLESTEROL, TOTAL",172,mg/dL,<200,null
+1,X1,03/05/2026 08:10:00,CMP,GLUCOSE,91,mg/dL,65-99,"Fasting, reference interval"
+1,X1,03/05/2026 08:10:00,CMP,EGFR,110,mL/min/1.73m2,> OR = 60,null
+1,X1,03/05/2026 08:10:00,CMP,BUN/CREATININE RATIO,SEE NOTE:,(calc),6-22,null
+1,X1,03/05/2026 08:10:00,Homocysteine,HOMOCYSTEINE,7.1,umol/L,< or = 11.0,null
+1,X1,03/05/2026 08:10:00,Zinc,ZINC,88,mcg/dL,60-130,null
+`;
+test('lab import reads CSV exports and skips pending rows', () => {
+  const c = ctx.parseLabCsv(LABCSV), f = Object.fromEntries(c.found.map(x => [x.testId, x]));
+  assert.equal(c.date, '2026-03-05');
+  assert.ok(!f['ldl-nih'], 'pending row skipped');
+  assert.equal(f['total-chol'].value, '172'); assert.equal(f['total-chol'].range.high, 200);
+  assert.equal([f.glucose.value, f.glucose.range.low, f.glucose.range.high].join(), '91,65,99');
+  assert.equal(f.egfr.range.low, 60); assert.equal(f.homocysteine.range.high, 11);
+  assert.equal(JSON.stringify(c.missed.map(x => [x.name, x.value, x.unit])), '[["ZINC","88","mcg/dL"]]');
+  assert.equal(ctx.parseLabCsv('Date,Fiber\n2026-01-01,20\n'), null);
+});
+
 /* ---- units (units.js) ---- */
 const u = { console }; u.window = u; vm.createContext(u);
 vm.runInContext(read('units.js').replace("'use strict';", '').replace(/^const /gm, 'var '), u);
