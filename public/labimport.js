@@ -12,16 +12,28 @@ const LAB_ALIASES = {
   'alkaline-phosphatase': ['Alkaline Phosphatase', 'ALP'], 'ast': ['AST', 'AST (SGOT)'], 'alt': ['ALT', 'ALT (SGPT)'],
   'hemoglobin-a1c': ['Hemoglobin A1C', 'HbA1c', 'A1C'], 'lp-a': ['Lipoprotein(a)', 'Lipoprotein (a)', 'Lp(a)'],
   'hs-crp': ['C-Reactive Protein', 'hs-CRP', 'CRP, High Sensitivity', 'High Sensitivity CRP'], 'fasting-insulin': ['Insulin', 'Insulin, Fasting'],
-  'total-protein': ['Total Protein', 'Protein, Total'], 'vitamin-d-total': ['Vitamin D, 25-Hydroxy', '25-Hydroxy Vitamin D', 'Vitamin D 25-OH', 'Vitamin D Total'],
-  'vitamin-b12': ['Vitamin B12', 'Cobalamin'], 'folate': ['Folate', 'Folic Acid'], 'tsh': ['TSH', 'Thyroid Stimulating Hormone'],
+  'total-protein': ['Total Protein', 'Protein, Total'], 'vitamin-d-total': ['Vitamin D, 25-Hydroxy', '25-Hydroxy Vitamin D', 'Vitamin D 25-OH', 'Vitamin D Total', 'Vitamin D, 25-OH, Total', '25-Hydroxyvitamin D, Total'],
+  'vitamin-b12': ['Vitamin B12', 'Cobalamin'], 'folate': ['Folate', 'Folic Acid', 'Folate, Serum'], 'tsh': ['TSH', 'Thyroid Stimulating Hormone'],
   'sti-chlamydia': ['Chlam Trachomatis Nucleic Acid', 'Chlamydia trachomatis'], 'sti-gc': ['N.Gonorrhoeae(GC) Nucleic Acid', 'N. gonorrhoeae', 'Neisseria gonorrhoeae'],
+  'apob': ['Apolipoprotein B', 'Apo B'], 'apoa1': ['Apolipoprotein A1', 'Apo A1'], 'apob-apoa1-ratio': ['Apolipoprotein B/A1 Ratio', 'ApoB/ApoA1 Ratio'],
+  'lp-pla2': ['Lp PLA2 Activity', 'Lp-PLA2 Activity', 'Lp-PLA2'], 'nt-probnp': ['NT proBNP', 'NT-proBNP', 'proBNP, N-terminal'],
+  'fibrinogen': ['Fibrinogen Activity, Clauss', 'Fibrinogen Activity', 'Fibrinogen'], 'troponin-hs': ['Troponin I, High Sensitivity', 'Troponin I, hs', 'hs-Troponin I'],
+  'il-6': ['Interleukin 6 (IL 6), Serum', 'Interleukin 6, Serum', 'Interleukin-6', 'IL-6'], 'nmr-lipoprotein-particle-count': ['LDL P', 'LDL-P', 'LDL Particle Number'],
+  'vitamin-d3': ['Vitamin D, 25-OH, D3', '25-Hydroxyvitamin D3'], 'vitamin-d2': ['Vitamin D, 25-OH, D2', '25-Hydroxyvitamin D2'],
+  // tests people may have added themselves (used only when that test exists in their tracker)
+  'iron': ['Iron, Total', 'Iron'], 'tibc': ['Iron Binding Capacity', 'TIBC'], 'iron-saturation': ['% Saturation', 'Iron Saturation', 'Transferrin Saturation'],
+  'wbc': ['White Blood Cell Count', 'WBC'], 'rbc': ['Red Blood Cell Count', 'RBC'], 'platelets': ['Platelet Count', 'Platelets'],
+  'neutrophils-abs': ['Absolute Neutrophils'], 'lymphocytes-abs': ['Absolute Lymphocytes'], 'monocytes-abs': ['Absolute Monocytes'],
+  'eosinophils-abs': ['Absolute Eosinophils'], 'basophils-abs': ['Absolute Basophils'],
+  'neutrophils-pct': ['Neutrophils'], 'lymphocytes-pct': ['Lymphocytes'], 'monocytes-pct': ['Monocytes'], 'eosinophils-pct': ['Eosinophils'], 'basophils-pct': ['Basophils'],
+  'ag-ratio': ['Albumin/Globulin Ratio', 'A/G Ratio'],
   'sti-rpr': ['RPR Screen, Qualitative', 'RPR'], 'hiv': ['HIV-1/2 Antigen/Antibody', 'HIV Screen', 'HIV 1/2 Ab/Ag'], 'hep-c': ['Hepatitis C Antibody', 'HCV Antibody'],
 };
 const normName = s => String(s).toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
 function aliasIndex() {
   const m = new Map();
   db.tests.filter(t => t.kind === 'blood').forEach(t => [t.name, ...(LAB_ALIASES[t.id] || [])].forEach(a => { const k = normName(a); if (k && !m.has(k)) m.set(k, t.id); }));
-  Object.entries(LAB_ALIASES).forEach(([id, as]) => as.forEach(a => { const k = normName(a); if (k) m.set(k, id); }));
+  Object.entries(LAB_ALIASES).forEach(([id, as]) => { if (testById(id)) as.forEach(a => { const k = normName(a); if (k) m.set(k, id); }); });
   return m;
 }
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
@@ -71,7 +83,59 @@ function parseLabText(text) {
       if (VALUE.test(v) || QUAL.test(v)) { out.set(id, { testId: id, value: v.replace(/\s+/g, ''), source: lines[i], range }); break; }
     }
   }
-  return [...out.values()];
+  // Reports laid out as "NAME value [H/L]" / report date / "range unit LAB" (Quest, Ulta Lab Tests and similar)
+  const qs = parseQuestStyle(text);
+  if (qs.found.length + qs.missed.length >= 3) out.clear();       // clearly this layout: its reading is the reliable one
+  qs.found.forEach(r => out.set(r.testId, r));
+  parseLabText.missed = qs.missed;
+  return [...out.values()].filter(r => testById(r.testId) && r.value !== '');
+}
+const QS_VAL = /^([<>]=?\s*)?(-?\d+(?:\.\d+)?)(?:\s+(?:H|L|HH|LL|A))?$/;
+const QS_LINE = /^(.*[A-Za-z%].*?)\s+([<>]=?\s*)?(-?\d+(?:\.\d+)?)(?:\s+(?:H|L|HH|LL|A))?$/;
+const QS_DATE = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/;
+// The line under the date: "65-99 mg/dL NW", "< OR = 11.0 umol/L NW", "ng/mL NW", "% NW" — always ends in a lab code like NW, Z4M, EN.
+const QS_RANGE = /^(?:[<>≤≥%]|-?\d|[a-zµ][a-z0-9µ/.%²]*\s)[^]*\s[A-Z][A-Z0-9]{1,3}$/i;
+const qsName = l => /[A-Za-z]/.test(l) && l.length <= 60 && !QS_DATE.test(l) && !/^(comments?|result|we advise|reported|report status|ordering|dob|gender|specimen|requisition|collected|received)\b/i.test(l);
+/** → { low, high, text, unit, line } (low/high null when the lab prints no numeric range) */
+function qsRange(line) {
+  const unit = line.replace(/\s+[A-Z][A-Z0-9]{1,3}$/, '').replace(/^(?:[<>]\s*or\s*=|[<>≤≥]=?)?\s*-?\d+(?:\.\d+)?(?:\s*-\s*-?\d+(?:\.\d+)?)?/i, '').replace(/\(calc\)/i, '').trim();
+  let m = line.match(/^(?:<\s*or\s*=|≤|<=?)\s*(-?\d+(?:\.\d+)?)/i); if (m) return { low: null, high: +m[1], text: `≤${m[1]}`, unit, line };
+  m = line.match(/^(?:>\s*or\s*=|≥|>=?)\s*(-?\d+(?:\.\d+)?)/i); if (m) return { low: +m[1], high: null, text: `≥${m[1]}`, unit, line };
+  m = line.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\b/); if (m) return { low: +m[1], high: +m[2], text: `${m[1]}–${m[2]}`, unit, line };
+  return { low: null, high: null, text: '', unit, line };
+}
+function parseQuestStyle(text) {
+  const idx = aliasIndex(), found = new Map(), missed = new Map();
+  // page footers can run into the last result line ("… NWWe advise having your results reviewed…")
+  const L = String(text).split(/\r?\n/).map(l => l.replace(/\s*We advise having your results.*$/i, '').trim()).filter(Boolean);
+  for (let i = 0; i < L.length; i++) {
+    let name = null, m, raw, next;
+    if ((m = L[i].match(QS_LINE)) && qsName(m[1])) { name = m[1]; raw = (m[2] || '') + m[3]; next = i + 1; }
+    else if (qsName(L[i]) && QS_VAL.test(L[i + 1] || '')) { name = L[i]; raw = L[i + 1]; next = i + 2; }
+    else if (qsName(L[i]) && qsName(L[i + 1] || '') && QS_VAL.test(L[i + 2] || '')) { name = `${L[i]} ${L[i + 1]}`; raw = L[i + 2]; next = i + 3; }
+    if (!name || !QS_DATE.test(L[next] || '')) continue;            // this layout always prints the report date under the value
+    const value = String(raw).replace(/\s+(?:H|L|HH|LL|A)$/, '').replace(/\s+/g, '');
+    const r = QS_RANGE.test(L[next + 1] || '') ? qsRange(L[next + 1]) : null, range = r && (r.low != null || r.high != null) ? r : null;
+    const id = idx.get(normName(name));
+    if (id) { if (!found.has(id)) found.set(id, { testId: id, value, source: name, range }); }
+    else if (!missed.has(normName(name))) missed.set(normName(name), { name, value, range, unit: r ? r.unit : '' });
+    i = next;
+  }
+  return { found: [...found.values()], missed: [...missed.values()] };
+}
+/** A friendly name for a test the tracker doesn't have yet: "IRON, TOTAL" → "Iron, Total", keeping "MCV", "ALT"… */
+const ABBR = new Set(['ALT', 'AST', 'BUN', 'HDL', 'LDL', 'EPA', 'DHA', 'DPA', 'CBC', 'TSH', 'IGF', 'DHEA', 'PSA', 'INR']);
+const tidyName = n => n.split(/(\s+|\/)/).map(w => ABBR.has(w.replace(/\W/g, '')) || (/^[A-Z0-9%]+,?$/.test(w) && !/[AEIOU]/.test(w)) ? w : w.charAt(0) + w.slice(1).toLowerCase()).join('');
+/** Start tracking tests from a report that the tracker doesn't have yet (their target starts as the lab's range). */
+function trackMissed(list) {
+  const slug = s => normName(s).replace(/\s+/g, '-').slice(0, 40) || 'lab-test';
+  list.forEach(x => {
+    let id = slug(x.name); while (testById(id)) id += '-2';
+    const r = x.range || {}, text = r.text || '';
+    db.tests.push({ id, kind: 'blood', name: tidyName(x.name), unit: x.unit || '', description: 'Added from a lab report.', optimalText: text || 'No target',
+      low: r.low ?? null, high: r.high ?? null, panel: 'Other lab tests', orderFrom: '', frequencyMonths: 12, oneTime: false, nextDue: null, notes: '',
+      labLow: r.low ?? null, labHigh: r.high ?? null, labText: text });
+  });
 }
 /* ---------- DEXA, VO2 max and metabolism reports ---------- */
 // Each entry: test id, label pattern, value pattern, plausible range (in stored units), unit handling.
@@ -204,9 +268,9 @@ async function pdfText(file, status) {
   return { text: out.join('\n'), ocr: true };
 }
 
-let labFound = [];
+let labFound = [], labMissed = [];
 function openLabImport() {
-  labFound = [];
+  labFound = []; labMissed = [];
   open(`${head('Import results', 'Lab, DEXA or fitness reports — you review everything before it’s saved')}
   <div class="m-b">
     <label class="drop" id="dropzone"><input type="file" id="labfiles" accept="application/pdf,.pdf,.txt,image/*" multiple hidden>
@@ -241,7 +305,8 @@ async function readLabFiles(files) {
 }
 function addLabText(text, file, ocr = false) {
   const date = findDate(text), found = [...parseLabText(text), ...parseMetricText(text)];
-  if (!found.length) labFound.push({ file, error: text.trim().length < 40 ? 'No text found in this file.' : 'No recognizable results found — you can add values by hand below.' });
+  (parseLabText.missed || []).forEach(x => { if (!labMissed.some(y => normName(y.name) === normName(x.name))) labMissed.push({ ...x, file, date }); });
+  if (!found.length && !labMissed.length) labFound.push({ file, error: text.trim().length < 40 ? 'No text found in this file.' : 'No recognizable results found — you can add values by hand below.' });
   found.forEach(f => { labFound = labFound.filter(x => !(x.testId === f.testId && x.date === date)); labFound.push({ ...f, file, date, ocr }); });
   renderLabReview();
 }
@@ -249,7 +314,10 @@ function renderLabReview() {
   const ok = labFound.filter(x => !x.error), bad = labFound.filter(x => x.error);
   const dateGuess = ok.find(x => x.date)?.date || today();
   const addable = db.tests.filter(t => (t.kind === 'blood' || t.kind === 'metric') && !ok.some(x => x.testId === t.id)).sort((a, b) => a.name.localeCompare(b.name));
-  $('#labreview').innerHTML = `${bad.map(b => `<div class="verdict ${b.error.startsWith('No recognizable') ? 'none' : 'bad'}" style="margin-top:10px"><b>${esc(b.file)}:</b> ${esc(b.error)}</div>`).join('')}
+  const missedBox = labMissed.length ? `<div class="verdict none" style="margin-top:10px"><b>Also in this report — not tracked yet (${labMissed.length}):</b>
+    <span class="small">${labMissed.map(x => `${esc(tidyName(x.name))} ${esc(x.value)}${x.unit ? ' ' + esc(x.unit) : ''}`).join(' · ')}</span>
+    <div class="actions" style="margin-top:8px"><button type="button" class="btn" id="trackmissed">Track these too</button></div></div>` : '';
+  $('#labreview').innerHTML = `${missedBox}${bad.map(b => `<div class="verdict ${b.error.startsWith('No recognizable') ? 'none' : 'bad'}" style="margin-top:10px"><b>${esc(b.file)}:</b> ${esc(b.error)}</div>`).join('')}
   ${ok.length || bad.length ? `<h3>${ok.length ? `Found ${ok.length} result${ok.length === 1 ? '' : 's'} — check them` : 'Add results'}</h3>
   <form id="labsave"><div class="tablewrap"><table><thead><tr><th></th><th>Test</th><th>Value</th><th>Date</th><th>Lab normal range</th><th>Last on file</th></tr></thead><tbody>
   ${ok.map((x, i) => { const t = testById(x.testId), last = resultsFor(x.testId).at(-1), dup = last && last.date === x.date && last.value === x.value;
@@ -263,6 +331,13 @@ function renderLabReview() {
     <select id="addmiss" aria-label="Test to add"><option value="">Choose a test…</option>${addable.map(t => `<option value="${t.id}">${esc(t.name)}${t.unit ? ` (${esc(t.unit)})` : ''}</option>`).join('')}</select>
     <input id="addmissval" placeholder="Value" style="width:90px" aria-label="Value"><input id="addmissdate" type="date" value="${dateGuess}" aria-label="Date"><button type="button" class="btn" id="addmissbtn">Add</button></div>
   <div class="actions" style="margin-top:12px"><button class="btn primary" ${ok.length ? '' : 'disabled'}>Save checked results</button><span class="small muted">Results already on file are unchecked.</span></div></form>` : ''}`;
+  $('#trackmissed')?.addEventListener('click', () => {
+    const before = new Set(db.tests.map(t => t.id)); trackMissed(labMissed);
+    const added = db.tests.filter(t => !before.has(t.id));
+    added.forEach((t, i) => { const x = labMissed[i]; labFound.push({ testId: t.id, value: x.value, date: x.date, source: x.name, file: x.file, range: x.range }); });
+    labMissed = []; persist(); renderLabReview();
+    toast(`Now tracking ${added.length} more test${added.length === 1 ? '' : 's'} — check the values and save`);
+  });
   $('#addmissbtn')?.addEventListener('click', () => {
     const id = $('#addmiss').value, v = $('#addmissval').value.trim(), d = $('#addmissdate').value;
     if (!id || !v) { toast('Choose a test and enter a value'); return; }

@@ -11,7 +11,7 @@ export default defineConfig({
       ALLOWED_ORIGINS: bindings.text("https://healthspantracker.web.app,https://healthspantracker.pages.dev"),
       VAPID_PUBLIC_KEY: bindings.text("BAw2-rfpCvk0Hm6UMBRBz6aLEJRuDYwMPE_c6yNlqa_aid9VuSLwKvxHqaD6_0YiUXpnBXxgfMrqP4XU5_nsgCk"),   // public by design
       VAPID_PRIVATE_JWK: bindings.secret(),
-      STRAVA_CLIENT_ID: bindings.text(""),          // set once the Strava API app exists (public value)
+      STRAVA_CLIENT_ID: bindings.text("296411"),    // Strava API app (public value; the secret is a Cloudflare secret)
       STRAVA_CLIENT_SECRET: bindings.secret(),
     },
     // Every hour; each person is notified at 8 am in their own time zone.

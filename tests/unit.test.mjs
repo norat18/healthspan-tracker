@@ -215,3 +215,61 @@ test('habits: a MyFitnessPal-style CSV (one row per meal) becomes days meeting e
 test('habits: a CSV without the needed columns is ignored', () => {
   assert.equal(hctx.weeklyFromFoodCsv('Name,Value\nx,1\n').days, 0);
 });
+
+/* ---- Quest / Ulta Lab Tests "Results By Category" layout (made-up values) ---- */
+const QUEST = `Specimen AB000000
+Collected Date 03/14/2026 08:30
+Received Date 03/14/2026 08:31
+DOB: 01/01/1990 Age: 36
+Result Value Reference Range Lab
+Lipid Panel
+TRIGLYCERIDES Pending
+03/15/26
+Z4M
+HOMOCYSTEINE 7.1
+03/15/26
+< OR = 11.0 umol/L NW
+GLUCOSE 88
+03/15/26
+65-99 mg/dL NW
+ALKALINE
+PHOSPHATASE
+62
+03/15/26
+31-125 U/L NW
+ALBUMIN/GLOBULIN
+RATIO
+1.7
+03/15/26
+1.0-2.5 (calc) NWWe advise having your results reviewed by a licensed medical healthcare professional.
+EGFR 101
+03/15/26
+> OR = 60 mL/min/1.73m2 NW
+IRON, TOTAL 201 H
+03/15/26
+40-190 mcg/dL NW
+CBC (includes Differential and Platelets)
+RED BLOOD CELL
+COUNT
+4.50
+03/15/26
+3.80-5.10 Million/uL NW
+FOLATE, SERUM 12.0
+03/15/26
+ng/mL NW`;
+test('lab import: Quest / Ulta layout — names on one or two lines, ranges, flags, collection date', () => {
+  const found = Object.fromEntries(ctx.parseLabText(QUEST).map(x => [x.testId, x]));
+  assert.equal(found.homocysteine.value, '7.1'); assert.equal(found.homocysteine.range.high, 11);
+  assert.equal(found.glucose.value, '88'); assert.deepEqual([found.glucose.range.low, found.glucose.range.high], [65, 99]);
+  assert.equal(found['alkaline-phosphatase'].value, '62');
+  assert.equal(found.egfr.value, '101'); assert.equal(found.egfr.range.low, 60);
+  assert.equal(found.folate.value, '12.0');
+  assert.equal(found.triglycerides, undefined);                      // "Pending" isn't a result
+  assert.equal(found.cbc, undefined);                                // a section heading isn't a result
+  const missed = Object.fromEntries(ctx.parseLabText.missed.map(x => [x.name, x]));
+  assert.equal(missed['IRON, TOTAL'].value, '201'); assert.equal(missed['IRON, TOTAL'].unit, 'mcg/dL');
+  assert.equal(missed['ALBUMIN/GLOBULIN RATIO'].range.high, 2.5);   // footer text glued to the range line is ignored
+  assert.equal(missed['RED BLOOD CELL COUNT'].value, '4.50');
+  assert.equal(vm.runInContext("tidyName('RED BLOOD CELL COUNT')", ctx), 'Red Blood Cell Count');
+  assert.equal(ctx.findDate(QUEST), '2026-03-14');                    // collection date, not the report date or birth date
+});
