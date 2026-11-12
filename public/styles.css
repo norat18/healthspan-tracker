@@ -456,3 +456,29 @@ main:focus { outline: none; }
 .chip.high, .chip.low { background: var(--warn-soft); color: var(--warn); }
 .v-high, .v-low { color: var(--warn); }
 @media (prefers-reduced-motion: reduce) { .cel-card { animation: none; } .ns-bar i, .g-bar i { transition: none; } }
+
+/* ---------- weekly habits under focus goals; connections ---------- */
+.habits { display: grid; gap: 8px; margin: 10px 0 8px; cursor: default; }
+.habit { padding: 8px 10px; border-radius: 10px; background: var(--surface-2); }
+.h-top { display: flex; align-items: center; gap: 6px; font-size: .88rem; }
+.h-top b { font-weight: 600; }
+.h-wk { flex: 1; }
+.h-val { font-weight: 650; font-size: .85rem; white-space: nowrap; }
+.h-val.met { color: var(--ok); }
+.h-bar { height: 6px; border-radius: 99px; background: var(--surface); overflow: hidden; margin: 6px 0; }
+.h-bar i { display: block; height: 100%; border-radius: 99px; background: var(--ok); transition: width .5s ease; }
+.h-bot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.h-dots { display: inline-flex; gap: 4px; }
+.h-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+.h-dots i.part { background: var(--ok-soft); box-shadow: inset 0 0 0 1.5px var(--ok); }
+.h-dots i.met { background: var(--ok); }
+.h-days { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.h-days button { font: inherit; font-size: .78rem; min-width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.h-days button.on { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 700; }
+.h-in { width: 84px; font: inherit; font-size: .85rem; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.h-hint { font-size: .8rem; }
+.conn { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--border); }
+.conn:first-of-type { border-top: 0; }
+.strava-btn { background: #FC5200; border-color: #FC5200; color: #fff; font-weight: 650; }
+.strava-btn:hover { background: #e34a00; }
+@media (prefers-reduced-motion: reduce) { .h-bar i { transition: none; } }

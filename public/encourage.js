@@ -96,7 +96,7 @@ function goalsCard(ins) {
     <div class="g-top"><b>${esc(label(g.t))}</b><span class="g-state">${g.reached ? '🎉 On target' : `${g.left}${esc(unit(g.t))} to go`}</span>
       <button class="g-x" data-enc="ungoal:${g.t.id}" aria-label="Stop focusing on ${esc(label(g.t))}" title="Remove">✕</button></div>
     <div class="g-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.pct}" aria-label="${esc(label(g.t))} progress"><i style="width:${Math.max(g.pct, 3)}%"></i></div>
-    <div class="small muted">Now ${esc(showVal(g.t, g.last.value))}${esc(unit(g.t) === ' points' ? '%' : unit(g.t))} · target ${esc(targetText(g.t))}${g.better && g.moved ? ` · ${g.moved}${esc(unit(g.t))} better since ${fmt(gsOf(g.t.id).startDate)}` : ''}</div></div>`).join('');
+    ${typeof habitRows === 'function' ? habitRows(g.t.id) : ''}<div class="small muted">Now ${esc(showVal(g.t, g.last.value))}${esc(unit(g.t) === ' points' ? '%' : unit(g.t))} · target ${esc(targetText(g.t))}${g.better && g.moved ? ` · ${g.moved}${esc(unit(g.t))} better since ${fmt(gsOf(g.t.id).startDate)}` : ''}</div></div>`).join('');
   return `<section class="card sum-card goals"><div class="card-h"><h3>🎯 Your focus</h3>${gs.length ? `<span class="small muted">${gs.length} of ${MAX_GOALS}</span>` : ''}</div><div class="card-b">
     ${rows || '<p class="small" style="margin:0 0 8px">Pick one to three things to work on. You’ll see a progress bar fill up as new results come in — and a little celebration when you get there.</p>'}
     ${gs.length < MAX_GOALS && ideas.length ? `<div class="goal-add"><span class="small muted">${gs.length ? 'Add a focus:' : 'Ideas:'}</span>${ideas.map(w => `<button class="gchip" data-enc="goal:${w.test}">+ ${esc(label(testById(w.test)))}</button>`).join('')}</div>` : ''}
@@ -130,6 +130,10 @@ function winEvents() {
       text: `${imp.dir === 'down' ? 'Down' : 'Up'} ${imp.delta}${u} since ${fmt(imp.from.date)}.` });
   });
   goals().forEach(g => { const gi = goalInfo(g); if (gi && gi.reached && !gi.reachedAtStart) ev.push({ key: `goal:${g.id}:${g.since}`, icon: '🏆', title: `Goal reached: ${label(gi.t)}`, text: `Now ${showVal(gi.t, gi.last.value)} — right on target. Well done.` }); });
+  if (typeof HABITS !== 'undefined') {
+    const wk = weekOf(today()), keys = new Set(goals().flatMap(g => habitsFor(g.id).slice(0, 2)));
+    keys.forEach(k => { const v = habitVal(k, wk), x = HABITS[k]; if (v && v.v >= x.target) ev.push({ key: `habit:${k}:${wk}`, icon: x.icon, title: `${x.name}: weekly target met!`, text: `${v.v} of ${x.target}${x.unit === 'min' ? ' minutes' : ''} this week. That’s how results move.` }); });
+  }
   milestones().filter(m => m.earned).forEach(m => ev.push({ key: 'm:' + m.key, icon: m.icon, title: `Milestone: ${m.title}`, text: m.text }));
   return ev;
 }
@@ -205,8 +209,9 @@ function applyTabVisibility() {
 /* ---------- clicks ---------- */
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-enc]'); if (!b) return;
-  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
   const [act, ...rest] = b.dataset.enc.split(':'), arg = rest.join(':');
+  if (!['goal', 'ungoal', 'snooze', 'hidestart', 'showtabs', 'addbyhand', 'recap', 'recapseen'].includes(act)) return;   // others: habits.js
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
   if (act === 'goal') addGoal(arg);
   else if (act === 'ungoal') removeGoal(arg);
   else if (act === 'snooze') { (S().snoozed ||= {})[arg] = addDaysISO(today(), 7); save('Okay — we’ll come back to it in a week'); }

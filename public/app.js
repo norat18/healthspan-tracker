@@ -211,6 +211,7 @@ function openUnlock(why) {
     try {
       await window.cloud.useRecoveryKey($('#unlockkey').value);
       cloudSync.locked = false; close(); toast('Unlocked'); await syncFromCloud(cloudSync.firstPending); window.cloud.watch(onRemoteChange);
+      if (typeof stravaAfterSignIn === 'function') stravaAfterSignIn();
     } catch (err) {
       msg.textContent = err.code === 'bad-format' ? 'That doesn’t look like a recovery key — it’s 52 letters and numbers.' : err.code === 'wrong-key' ? 'That key doesn’t open your data. Check it and try again.' : 'Couldn’t check the key — check your connection and try again.';
     }
@@ -232,7 +233,7 @@ function downloadRecoveryKey() {
 }
 window.onCloudUser = async user => {
   const was = cloudSync.user; cloudSync.ready = true; cloudSync.user = user;
-  if (user) { await syncFromCloud(!was); if (!cloudSync.locked) window.cloud.watch(onRemoteChange); }
+  if (user) { await syncFromCloud(!was); if (!cloudSync.locked) { window.cloud.watch(onRemoteChange); if (typeof stravaAfterSignIn === 'function') stravaAfterSignIn(); } }
   else if (was) { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.savedAt = 0; cloudSync.locked = false; toast('Signed out'); }
   updateSyncBadge(); if (!modal.open) render();
 };
@@ -562,6 +563,7 @@ function vData() {
   <h2>Past dates</h2>
   <div class="card"><div class="card-b"><p>Add the last date for checkups, screenings, vaccines and one-time tests that have no date on file (${pastDateItems().count} right now).</p>
     <button class="btn" data-pastdates>Fill in past dates</button></div></div>
+  ${typeof connectionsSection === 'function' ? connectionsSection() : ''}
   <h2>Your account &amp; privacy</h2>
   <div class="card"><div class="card-b">
     ${cloudSync.user ? `<p><b>✓ Signed in as ${esc(cloudSync.user.email || '')}.</b> Every change saves automatically to your account, so your data is the same on any device you sign in on.</p>

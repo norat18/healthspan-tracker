@@ -245,3 +245,24 @@ test('a celebration stays until it is closed', async ({ page }) => {
   await cel.locator('.cel-x').click();
   await expect(cel).toHaveCount(0);
 });
+
+test('weekly habits under a focus goal, and the Connections section', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { db.settings.dob = '1990-05-01'; db.settings.sex = 'female'; db.settings.celebrated = {};
+    upsertResult('ldl-nih', '2026-06-01', '130'); upsertResult('home-rhr', '2026-06-01', '78'); save(); addGoal('ldl-nih'); addGoal('home-rhr'); });
+  const ldl = page.locator('.goal[data-test="ldl-nih"]'), vo2 = page.locator('.goal[data-test="home-rhr"]');
+  await expect(ldl.locator('.habit')).toHaveCount(2);                   // fiber + saturated fat
+  await ldl.locator('[data-habitset="fiber:5"]').click();
+  await expect(page.locator('#modal')).not.toBeVisible();               // tapping a habit doesn't open the test
+  await expect(page.locator('.goal[data-test="ldl-nih"] .habit').first()).toContainText('5 / 5 ✓');
+  await expect(page.locator('.celebrate')).toContainText('weekly target met');
+  await page.locator('.celebrate .cel-x').click();
+  await vo2.locator('[data-habit="cardio"]').fill('90'); await vo2.locator('[data-habit="cardio"]').press('Tab');
+  await expect(page.locator('.goal[data-test="home-rhr"] .habit').first()).toContainText('90 / 150 min');
+  await expect(page.locator('.goal[data-test="home-rhr"]')).toContainText('Connect Strava');
+  await page.locator('.tabs [data-view="data"]').click();
+  await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible();
+  await expect(page.locator('[data-enc="strava"]')).toBeVisible();
+  expect(errors).toEqual([]);
+});

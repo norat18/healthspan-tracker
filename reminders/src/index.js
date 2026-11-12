@@ -17,11 +17,26 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: allowed ? 204 : 403, headers: cors });
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/') return json({ ok: true, service: 'healthspan-reminders' }, 200, cors);
+    // Strava: the public client ID (so it isn't hard-coded in the app)
+    if (request.method === 'GET' && url.pathname === '/strava/config') return json({ clientId: env.STRAVA_CLIENT_ID || null }, 200, cors);
     if (request.method !== 'POST' || !allowed) return json({ error: 'not allowed' }, 403, cors);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'bad json' }, 400, cors); }
     const uid = await verifyFirebaseToken(body.idToken, env.FIREBASE_PROJECT_ID).catch(() => null);
     if (!uid) return json({ error: 'unauthorized' }, 401, cors);
+    // Strava sign-in: swap a one-time code (or refresh token) for access tokens using the app's secret.
+    // Nothing is stored here, and activity data never comes through this service — the browser fetches it from Strava.
+    if (url.pathname === '/strava/token') {
+      if (!env.STRAVA_CLIENT_ID || !env.STRAVA_CLIENT_SECRET) return json({ error: 'strava not configured' }, 503, cors);
+      const form = { client_id: env.STRAVA_CLIENT_ID, client_secret: env.STRAVA_CLIENT_SECRET };
+      if (typeof body.code === 'string' && body.code.length < 200) Object.assign(form, { code: body.code, grant_type: 'authorization_code' });
+      else if (typeof body.refresh === 'string' && body.refresh.length < 200) Object.assign(form, { refresh_token: body.refresh, grant_type: 'refresh_token' });
+      else return json({ error: 'bad request' }, 400, cors);
+      const r = await fetch('https://www.strava.com/oauth/token', { method: 'POST', body: new URLSearchParams(form) });
+      if (!r.ok) return json({ error: 'strava ' + r.status }, 502, cors);
+      const t = await r.json();
+      return json({ access_token: t.access_token, refresh_token: t.refresh_token, expires_at: t.expires_at }, 200, cors);   // no athlete profile
+    }
     await env.DB.prepare(SCHEMA).run();
     const due = cleanDue(body.due);
     if (url.pathname === '/subscribe') {

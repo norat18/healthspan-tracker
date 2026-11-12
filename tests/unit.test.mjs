@@ -183,3 +183,35 @@ test('recovery key is kept per account on the device and removed on forget', () 
   assert.deepEqual([...V.load('u1')], [...key]); assert.equal(V.load('u2'), null);
   V.forget('u1'); assert.equal(V.load('u1'), null);
 });
+
+/* ---- habits: Strava weekly totals and food-log CSVs (habits.js, pure part) ---- */
+const hsrc = read('habits.js'), hctx = { console }; vm.createContext(hctx);
+vm.runInContext(hsrc.slice(0, hsrc.indexOf('/* ---------- stored weekly values')).replace("'use strict';", '').replace(/^const /gm, 'var '), hctx);
+
+test('habits: weeks start on Monday', () => {
+  assert.equal(hctx.weekOf('2026-11-11'), '2026-11-09');   // Wednesday
+  assert.equal(hctx.weekOf('2026-11-09'), '2026-11-09');   // Monday
+  assert.equal(hctx.weekOf('2026-11-15'), '2026-11-09');   // Sunday
+});
+test('habits: Strava activities become weekly cardio minutes and strength sessions', () => {
+  const w = hctx.weeklyFromActivities([
+    { sport_type: 'Run', start_date_local: '2026-11-10T07:00:00Z', moving_time: 1800 },
+    { sport_type: 'Ride', start_date_local: '2026-11-12T07:00:00Z', moving_time: 3600 },
+    { sport_type: 'WeightTraining', start_date_local: '2026-11-13T07:00:00Z', moving_time: 2700 },
+    { type: 'Walk', start_date_local: '2026-11-03T07:00:00Z', moving_time: 1500 },
+    { sport_type: 'Yoga', start_date_local: '2026-11-11T07:00:00Z', moving_time: 3600 },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(w)), { '2026-11-09': { cardio: 90, strength: 1 }, '2026-11-02': { cardio: 25, strength: 0 } });
+});
+test('habits: a MyFitnessPal-style CSV (one row per meal) becomes days meeting each habit per week', () => {
+  const csv = 'Date,Meal,Calories,Fat (g),Saturated Fat,Sodium (mg),Fiber,Protein (g)\n'
+    + '2026-11-09,Breakfast,400,10,3,500,"12",20\n2026-11-09,Dinner,700,25,8,1200,15,40\n'   // fiber 27 ✓, sat 11 ✓, sodium 1700 ✓
+    + '2026-11-10,Lunch,900,40,16,2600,10,30\n'                                               // fiber 10, sat 16, sodium 2600
+    + '11/11/2026,Lunch,600,20,5,"1,900",30,25\n';                                            // US date, quoted thousands
+  const r = hctx.weeklyFromFoodCsv(csv);
+  assert.equal(r.days, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.weeks)), { '2026-11-09': { fiber: 2, satfat: 2, sodium: 2 } });
+});
+test('habits: a CSV without the needed columns is ignored', () => {
+  assert.equal(hctx.weeklyFromFoodCsv('Name,Value\nx,1\n').days, 0);
+});
