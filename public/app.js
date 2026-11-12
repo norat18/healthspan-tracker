@@ -68,7 +68,7 @@ let db = load();
 if (typeof applyAgeNorms === 'function') applyAgeNorms(db);
 let view = location.hash === '#reminders' ? 'reminders' : 'summary';
 /* ---------- saving: this browser, plus your account when signed in ---------- */
-const cloudSync = { ready: false, user: null, pending: false, error: false, savedAt: 0 };
+const cloudSync = { ready: false, user: null, pending: false, error: false, savedAt: 0, locked: false };
 let putTimer = null;
 const hasData = d => d && ((d.results || []).length || (d.visits || []).length || (d.meds || []).length || (d.family || []).length);
 /** Save without re-rendering: this browser now, your account a moment later. */
@@ -84,7 +84,7 @@ function persist() {
   if (cloudSync.user) { cloudSync.pending = true; updateSyncBadge(); clearTimeout(putTimer); putTimer = setTimeout(pushToCloud, 600); }
 }
 async function pushToCloud() {
-  if (!cloudSync.user || !window.cloud) return;
+  if (!cloudSync.user || !window.cloud || cloudSync.locked) return;     // locked: this device can't open (or save to) the account yet
   try {
     for (let attempt = 0; attempt < 4; attempt++) {
       const t = Math.max(Date.now(), cloudSync.savedAt + 1); db.settings.owner = cloudSync.user.uid;
@@ -154,8 +154,14 @@ window.addEventListener('online', () => { if (cloudSync.user && (cloudSync.pendi
 /** Load your account's copy. First sign-in: this browser's data moves into your account. */
 async function syncFromCloud(first) {
   if (!cloudSync.user || !window.cloud) return;
+  let newKey = null;
   try {
-    const remote = await window.cloud.load();
+    let remote;
+    try { remote = await window.cloud.load(); }
+    catch (e) { if (e.code !== 'needs-key') throw e; cloudSync.locked = true; cloudSync.firstPending = first; updateSyncBadge(); render(); openUnlock(e.why); return; }
+    cloudSync.locked = false;
+    // New account, or data saved before encryption: make this account's key (shown once as a recovery key).
+    if ((!remote || remote.legacy) && !window.cloud.hasKey()) newKey = window.cloud.createKey();
     if (!remote) { if (db.settings.owner && db.settings.owner !== cloudSync.user.uid) db = fresh(); await pushToCloud(); if (first) toast('Signed in — your data now saves to your account'); }
     else if ((remote.savedAtMs || 0) > cloudSync.savedAt) {
       const local = db, guestData = first && !local.settings.owner && hasData(local);
@@ -167,14 +173,67 @@ async function syncFromCloud(first) {
         if (changed) await pushToCloud();
       }
     }
+    // Replace an unencrypted copy (and its daily history) with encrypted ones right away.
+    if (remote && remote.legacy) { cloudSync.savedAt = Math.max(cloudSync.savedAt, remote.savedAtMs || 0); await pushToCloud(); await window.cloud.encryptOldHistory().catch(e => console.warn('history encryption', e)); }
     cloudSync.error = false;
   } catch (e) { cloudSync.error = true; console.warn('Load from account failed', e); }
   updateSyncBadge(); if (!modal.open) render();
+  if (newKey) showRecoveryKey(newKey, true);
+}
+/* ---------- end-to-end encryption: recovery key ---------- */
+function showRecoveryKey(code, isNew) {
+  open(`${head(isNew ? 'Save your recovery key' : 'Your recovery key')}
+  <div class="m-b">
+    <p style="margin-top:12px">Your health data is <b>end-to-end encrypted</b>: it’s locked on your device before it’s saved, so only you can read it — not the app’s developer, not Google.</p>
+    <p>You’ll need this key to open your data on another device or after you sign out. <b>If you lose it, nobody can recover your saved data.</b></p>
+    <div class="rkey" id="rkey" translate="no">${esc(code)}</div>
+    <div class="actions"><button class="btn" data-copykey>Copy</button><button class="btn" data-dlkey>Download as a file</button></div>
+    ${isNew ? `<label class="check" style="margin-top:14px"><input type="checkbox" id="keysaved"> I’ve saved my recovery key somewhere safe, like a password manager</label>
+    <div class="actions" style="margin-top:12px"><button class="btn primary" id="keydone" data-close disabled>Done</button></div>` : '<div class="actions" style="margin-top:12px"><button class="btn primary" data-close>Close</button></div>'}
+  </div>`);
+  $('#keysaved')?.addEventListener('change', e => { $('#keydone').disabled = !e.target.checked; });
+}
+function openUnlock(why) {
+  open(`${head('Enter your recovery key', 'Your data is end-to-end encrypted')}
+  <div class="m-b">
+    <p style="margin-top:12px">${why === 'mismatch' ? 'Your data was locked with a different key (it may have been reset on another device).' : 'To open your data on this device, enter the recovery key you saved when you set up your account.'}
+      Only you have this key — the app’s developer can’t see your data or recover it.</p>
+    <form id="unlockform"><label class="f">Recovery key<input id="unlockkey" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-…" class="rkey-in" required></label>
+      <p class="small" id="unlockmsg" role="alert"></p>
+      <div class="actions"><button class="btn primary">Unlock</button><button type="button" class="btn" data-close>Not now</button></div></form>
+    <details style="margin-top:18px"><summary class="small">Lost your recovery key?</summary>
+      <p class="small">Without it, your saved data can’t be opened by anyone. You can start over: this permanently deletes your saved data and gives you a new key.</p>
+      <button class="btn danger" data-resetvault>Delete my saved data and start over</button></details>
+  </div>`);
+  setTimeout(() => $('#unlockkey')?.focus(), 50);
+  $('#unlockform').addEventListener('submit', async e => {
+    e.preventDefault(); const msg = $('#unlockmsg'); msg.textContent = 'Checking…';
+    try {
+      await window.cloud.useRecoveryKey($('#unlockkey').value);
+      cloudSync.locked = false; close(); toast('Unlocked'); await syncFromCloud(cloudSync.firstPending); window.cloud.watch(onRemoteChange);
+    } catch (err) {
+      msg.textContent = err.code === 'bad-format' ? 'That doesn’t look like a recovery key — it’s 52 letters and numbers.' : err.code === 'wrong-key' ? 'That key doesn’t open your data. Check it and try again.' : 'Couldn’t check the key — check your connection and try again.';
+    }
+  });
+}
+async function resetVault() {
+  if (!confirm('Permanently delete your saved data and start over with a new recovery key?\n\nThis can’t be undone.')) return;
+  try {
+    const code = await window.cloud.startOver();
+    cloudSync.locked = false; cloudSync.savedAt = 0; db = fresh(); close();
+    await pushToCloud(); render(); updateSyncBadge(); showRecoveryKey(code, true); window.cloud.watch(onRemoteChange);
+  } catch (e) { toast('Couldn’t start over — try again'); }
+}
+function downloadRecoveryKey() {
+  const code = window.cloud.recoveryKey(); if (!code) return;
+  const text = `Healthspan Tracker recovery key\n\n${code}\n\nAccount: ${cloudSync.user?.email || ''}\nKeep this somewhere safe. You need it to open your data on another device or after signing out.\nWithout it, your saved data can’t be recovered.\n`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); a.download = 'healthspan-recovery-key.txt'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 window.onCloudUser = async user => {
   const was = cloudSync.user; cloudSync.ready = true; cloudSync.user = user;
-  if (user) { await syncFromCloud(!was); window.cloud.watch(onRemoteChange); }
-  else if (was) { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.savedAt = 0; toast('Signed out'); }
+  if (user) { await syncFromCloud(!was); if (!cloudSync.locked) window.cloud.watch(onRemoteChange); }
+  else if (was) { try { localStorage.removeItem(KEY); } catch (e) { } db = fresh(); cloudSync.savedAt = 0; cloudSync.locked = false; toast('Signed out'); }
   updateSyncBadge(); if (!modal.open) render();
 };
 /** Explain a sign-in problem in plain words, with the technical code for troubleshooting. */
@@ -198,6 +257,7 @@ function updateSyncBadge() {
   const el = document.getElementById('sync'); if (!el) return;
   if (!cloudSync.ready) { el.innerHTML = ''; return; }
   if (!cloudSync.user) { el.innerHTML = `<button class="btn primary" data-signin>Sign in to save</button>`; return; }
+  if (cloudSync.locked) { el.innerHTML = `<button class="btn primary" data-unlock>🔒 Unlock your data</button>`; return; }
   const st = cloudSync.error ? '<span class="sync warn" title="Couldn’t reach your account — changes are kept on this device and will retry.">⚠ Not saved</span>'
     : cloudSync.pending ? '<span class="sync">Saving…</span>' : '<span class="sync ok" title="Saved to your account">✓ Saved</span>';
   el.innerHTML = `${st}<button class="acct" data-acctmenu title="${esc(cloudSync.user.email || '')}">${cloudSync.user.photoURL ? `<img src="${esc(cloudSync.user.photoURL)}" alt="" referrerpolicy="no-referrer">` : esc((cloudSync.user.email || '?')[0].toUpperCase())}</button>`;
@@ -501,10 +561,12 @@ function vData() {
     <button class="btn" data-pastdates>Fill in past dates</button></div></div>
   <h2>Your account &amp; privacy</h2>
   <div class="card"><div class="card-b">
-    ${cloudSync.user ? `<p><b>✓ Signed in as ${esc(cloudSync.user.email || '')}.</b> Every change saves automatically to your account, so your data is the same on any device you sign in on. Only you can read it.</p>
+    ${cloudSync.user ? `<p><b>✓ Signed in as ${esc(cloudSync.user.email || '')}.</b> Every change saves automatically to your account, so your data is the same on any device you sign in on.</p>
+      <p><b>🔒 End-to-end encrypted.</b> Your data is locked on your device before it’s saved — only you can read it, not the app’s developer or Google. Your recovery key opens it on other devices.</p>
+      <div class="actions" style="margin-bottom:10px">${cloudSync.locked ? '<button class="btn primary" data-unlock>Enter recovery key</button>' : '<button class="btn" data-showkey>Show recovery key</button><button class="btn" data-dlkey>Download recovery key</button>'}</div>
       <div class="actions"><button class="btn" data-signout>Sign out</button><button class="btn danger" data-deleteaccount>Delete my account and data</button></div>`
       : `<p><b>Not signed in.</b> Your data is kept only in this browser. Sign in with Google to save it to your account and use it on other devices.</p><div class="actions"><button class="btn primary" data-signin>Sign in with Google</button></div>`}
-    <p class="small muted" style="margin-top:12px">Healthspan Tracker doesn’t sell or share your data and has no ads or tracking. Signed-in data is stored in Google Firebase, locked so only your account can read or write it. Not medical advice. <a href="privacy.html">Privacy &amp; terms</a></p>
+    <p class="small muted" style="margin-top:12px">Healthspan Tracker doesn’t sell or share your data and has no ads or tracking. Signed-in data is encrypted on your device and stored in Google Firebase, where only your account can reach it. Not medical advice. <a href="privacy.html">Privacy &amp; terms</a></p>
     ${cloudSync.user ? `<p class="small" style="margin-top:12px"><b>Earlier versions:</b> a copy of your data is kept automatically for each of the last 30 days you made changes.</p>
     <div class="actions"><button class="btn" data-history>Restore an earlier version</button></div>` : ''}
     <p class="small muted">Optional: download a copy to keep somewhere else, or restore one.</p>
@@ -741,7 +803,7 @@ function notifyIfDue() {
 
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-view],[data-go],[data-test],[data-proc],[data-logvisit],[data-addresults],[data-editdraw],[data-copy],[data-copylist],[data-close],[data-delresult],[data-deltest],[data-delvisit],[data-delproc],[data-newtest],[data-newproc],[data-ics],[data-export],[data-reset],[data-notify],[data-draw],[data-scanlog],[data-rview],[data-pastdates],[data-scanconfirm],[data-med],[data-event],[data-delfam],[data-delmed],[data-delevent],[data-visitsheet],[data-printsheet],[data-labimport],[data-signin],[data-signout],[data-acctmenu],[data-deleteaccount],[data-pushon],[data-pushoff],[data-pushtest],[data-history],[data-restoreday]');
+  const el = e.target.closest('[data-view],[data-go],[data-test],[data-proc],[data-logvisit],[data-addresults],[data-editdraw],[data-copy],[data-copylist],[data-close],[data-delresult],[data-deltest],[data-delvisit],[data-delproc],[data-newtest],[data-newproc],[data-ics],[data-export],[data-reset],[data-notify],[data-draw],[data-scanlog],[data-rview],[data-pastdates],[data-scanconfirm],[data-med],[data-event],[data-delfam],[data-delmed],[data-delevent],[data-visitsheet],[data-printsheet],[data-labimport],[data-signin],[data-signout],[data-acctmenu],[data-deleteaccount],[data-pushon],[data-pushoff],[data-pushtest],[data-history],[data-restoreday],[data-unlock],[data-showkey],[data-dlkey],[data-copykey],[data-resetvault]');
   if (!el) { if (e.target === modal) close(); return; }
   const D = el.dataset;
   if (D.view || D.go) { e.preventDefault(); view = D.view || D.go; close(); render(); scrollTo(0, 0); }
@@ -755,8 +817,13 @@ document.addEventListener('click', e => {
   else if (D.printsheet !== undefined) printSheet();
   else if (D.labimport !== undefined) openLabImport();
   else if (D.signin !== undefined) { if (!window.cloud) toast('Sign-in isn’t available right now — check your connection'); else window.cloud.signIn().catch(err => { console.error('Sign-in error', err); signInError(err); }); }
-  else if (D.signout !== undefined || D.acctmenu !== undefined) { if (confirm(`Sign out of ${cloudSync.user?.email || 'your account'}? Your data stays saved in your account and is removed from this browser.`)) window.cloud.signOut(); }
+  else if (D.signout !== undefined || D.acctmenu !== undefined) { if (confirm(`Sign out of ${cloudSync.user?.email || 'your account'}? Your data stays saved in your account and is removed from this browser. You’ll need your recovery key to open it here again.`)) window.cloud.signOut(); }
   else if (D.history !== undefined) openHistory();
+  else if (D.unlock !== undefined) openUnlock();
+  else if (D.showkey !== undefined) showRecoveryKey(window.cloud.recoveryKey(), false);
+  else if (D.dlkey !== undefined) downloadRecoveryKey();
+  else if (D.copykey !== undefined) navigator.clipboard.writeText(window.cloud.recoveryKey() || '').then(() => toast('Recovery key copied'), () => toast('Couldn’t copy — select it and copy instead'));
+  else if (D.resetvault !== undefined) resetVault();
   else if (D.restoreday) restoreDay(D.restoreday);
   else if (D.pushon !== undefined) enablePush();
   else if (D.pushoff !== undefined) disablePush();

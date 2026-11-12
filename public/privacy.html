@@ -21,9 +21,9 @@
 <main class="doc">
   <p><a href="./">← Back to Healthspan Tracker</a></p>
   <h1>Privacy &amp; Terms</h1>
-  <p class="updated">Last updated November 10, 2026</p>
+  <p class="updated">Last updated November 11, 2026</p>
 
-  <div class="box"><b>In short:</b> your health data belongs to you. Without an account it never leaves your browser. With an account it’s stored in Google Firebase, locked so only you can read it. There are no ads, no analytics and no tracking, and you can delete everything at any time.</div>
+  <div class="box"><b>In short:</b> your health data belongs to you. Without an account it never leaves your browser. With an account it’s <b>end-to-end encrypted</b> on your device before it’s saved, so only you can read it — not the app’s developer, not Google, not Cloudflare. There are no ads, no analytics and no tracking, and you can delete everything at any time.</div>
 
   <h2>What Healthspan Tracker stores</h2>
   <ul>
@@ -35,21 +35,25 @@
   <h2>Where your data lives</h2>
   <ul>
     <li><b>Not signed in:</b> only in your web browser’s storage on that device. Clearing your browser data deletes it.</li>
-    <li><b>Signed in:</b> in a single private record in Google Cloud Firestore (United States), plus a copy in your browser for offline use. Data is encrypted in transit (HTTPS) and at rest by Google.</li>
-    <li>Security rules allow only your signed-in account to read or change your record. Firebase App Check helps block requests that don’t come from this app.</li>
+    <li><b>Signed in:</b> in a single private record in Google Cloud Firestore (United States), plus a copy in your browser for offline use, and up to 30 daily copies for “Restore an earlier version”.</li>
+    <li><b>End-to-end encrypted.</b> Before anything is saved, your device compresses it and encrypts it with AES-256-GCM using a random key that is created on your device and never sent anywhere. The database stores only that unreadable ciphertext (plus the time it was saved). Security rules refuse to save anything that isn’t encrypted.</li>
+    <li><b>Your recovery key</b> is shown to you once when you set up your account (and any time in the Data tab). You type it in to open your data on a new device or after signing out. Signing out removes the key from that device. <b>If you lose your recovery key, your saved data can’t be recovered by anyone</b> — you can start over with an empty account.</li>
+    <li>Security rules also allow only your signed-in account to read or change your record, and Firebase App Check helps block requests that don’t come from this app.</li>
   </ul>
 
   <h2>Importing reports</h2>
   <p>When you import a PDF or a photo of a report, it is read <b>on your device</b>. The file is never uploaded. For scanned reports and photos, the app downloads a text-recognition engine (Tesseract, from the jsDelivr CDN) to do this in your browser; no report content is sent with that download. Only the values you choose to save are stored.</p>
 
   <h2>Who can see it</h2>
-  <p>Only you. Healthspan Tracker does not sell, rent, share or use your data for advertising, research or AI training. The service providers that run the app — Google (Firebase hosting, sign-in and database) and Cloudflare (website hosting) — process data only to provide those services. The app’s maintainer can technically administer the database but will not access your records except to investigate a problem you report, or if required by law.</p>
+  <p>Only you. Healthspan Tracker does not sell, rent, share or use your data for advertising, research or AI training. The service providers that run the app — Google (Firebase hosting, sign-in and database) and Cloudflare (website hosting) — process data only to provide those services. Because your data is end-to-end encrypted, the app’s maintainer can’t read it either — not even with full access to the database — and couldn’t hand it over if asked.</p>
+  <p><b>What the maintainer can see:</b> that an account exists and its Google name, email and profile picture (from sign-in); when it last saved and roughly how much data it has; and, if you turn on reminders, the dates something is due (not what it is).</p>
+  <p><b>The one thing encryption can’t protect against</b> is a change to the app’s own code, since that code runs on your device. The app’s code is public on <a href="https://github.com/norat18/healthspan-tracker">GitHub</a> and is published only by an automated build from that repository, so any change is visible.</p>
 
   <h2>Your choices</h2>
   <ul>
     <li><b>Download a copy</b> of your data any time (Data tab → Download a copy).</li>
     <li><b>Delete everything:</b> Data tab → <i>Delete my account and data</i> removes your record and your sign-in account permanently.</li>
-    <li><b>Reminder notifications</b> are off unless you turn them on. When on, only the <i>names and due dates</i> of your reminders (for example “Dentist — Dec 7, 2026”) and your device’s notification address are stored by our reminder service on Cloudflare, so it knows when to notify you. No results or other health values are sent. Turning notifications off, or deleting your account, removes this.</li>
+    <li><b>Reminder notifications</b> are off unless you turn them on. When on, only <i>due dates</i> (for example “something is due Dec 7, 2026” — not what it is) and your device’s notification address are stored by our reminder service on Cloudflare, so it knows when to notify you. The notification itself carries no content; your device fills in the text. No results, names of tests or other health details are sent. Turning notifications off, or deleting your account, removes this.</li>
   </ul>
 
   <h2>If something goes wrong</h2>

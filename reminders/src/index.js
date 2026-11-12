@@ -1,8 +1,8 @@
-// Healthspan Tracker reminders: stores opted-in devices and a list of {name, due date}, and once a day sends a
+// Healthspan Tracker reminders: stores opted-in devices and a list of due dates (no names), and once a day sends a
 // push notification to anyone with something due today, due in a week, not yet booked and due in a month,
 // or overdue (overdue: Mondays only).
 // Pushes carry no content; the app's service worker shows the reminder text it already has on the device.
-// No test results or other health values are ever sent here.
+// No test results, item names or other health details are ever sent here.
 
 const SCHEMA = `CREATE TABLE IF NOT EXISTS subs (
   endpoint TEXT PRIMARY KEY, uid TEXT NOT NULL, due TEXT NOT NULL DEFAULT '[]', tz TEXT, updated INTEGER, last_sent TEXT)`;
@@ -126,7 +126,7 @@ async function verifyFirebaseToken(token, projectId) {
 function cleanDue(due) {
   return (Array.isArray(due) ? due : []).slice(0, MAX_ITEMS)
     .filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(x.d))
-    .map(x => ({ n: String(x.n || '').slice(0, 80), d: x.d, ...(x.b ? { b: 1 } : {}) }));
+    .map(x => ({ d: x.d, ...(x.b ? { b: 1 } : {}) }));                 // dates only; names are never stored
 }
 function validEndpoint(e) {
   try { const u = new URL(e); return u.protocol === 'https:' && e.length < 1000; } catch { return false; }

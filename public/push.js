@@ -16,10 +16,10 @@ function needsBooking(i, s) {
   return isProc(i) && !i.bundleWith && !!s.due && !['never', 'complete', 'unscheduled'].includes(s.state) && i.bookedFor !== s.due;
 }
 const BOOK_AHEAD_DAYS = 30;
-/** Items with a real due date (not "no date on file"), as {n: name, d: date, b: 1 if it still needs booking}. */
+/** Due dates only, as {d: date, b: 1 if it still needs booking} — no names or anything about what's due leaves the device. */
 function pushDueList() {
   return allItems().filter(x => x.s.due && !['never', 'complete', 'unscheduled'].includes(x.s.state))
-    .map(x => ({ n: short(x.i.name).slice(0, 80), d: x.s.due, ...(needsBooking(x.i, x.s) ? { b: 1 } : {}) })).slice(0, 150);
+    .map(x => ({ d: x.s.due, ...(needsBooking(x.i, x.s) ? { b: 1 } : {}) })).slice(0, 150);
 }
 /** The text a notification shows, saved on this device for the service worker. */
 async function savePushSummary() {
@@ -81,5 +81,5 @@ function pushSection() {
     ${blocked ? ' <b>Notifications are blocked for this site</b> — allow them in your browser settings first.' : ''}</p>
   <div class="actions">${on ? '<button class="btn" data-pushtest>Send a test</button><button class="btn" data-pushoff>Turn off</button>'
     : `<button class="btn primary" data-pushon ${blocked ? 'disabled' : ''}>Turn on notifications</button>`}</div>
-  <p class="small muted" style="margin-top:6px">Only the names and due dates of your reminders are shared with the notification service — never results. ${cloudSync.user ? '' : 'Requires signing in.'}</p>`;
+  <p class="small muted" style="margin-top:6px">Only due dates are shared with the notification service — not what’s due, and never results. ${cloudSync.user ? '' : 'Requires signing in.'}</p>`;
 }

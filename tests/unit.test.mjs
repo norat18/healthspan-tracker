@@ -147,3 +147,39 @@ test('CCTA report', () => {
   const r = sr.parseScanReport('coronary-ct-angiogram', `IMPRESSION:\nCAD-RADS 2. Mixed plaque in the proximal LAD with 25-49% stenosis.`);
   assert.deepEqual([r.values['ccta-cad-rads'], r.values['ccta-stenosis'], r.values['ccta-plaque']], ['2', '49', 'Mixed']);
 });
+
+/* ---- end-to-end encryption (vault.js) ---- */
+const vctx = { console, crypto: globalThis.crypto, TextEncoder, TextDecoder, btoa, atob, Blob, Response, CompressionStream, DecompressionStream, Uint8Array,
+  localStorage: (() => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; })() };
+vm.createContext(vctx); vm.runInContext(read('vault.js').replace("'use strict';", '').replace('const vault =', 'var vault ='), vctx);
+const V = vctx.vault;
+
+test('encryption: round trip, and the saved form contains no readable data', async () => {
+  const key = V.newKey(), text = JSON.stringify({ results: [{ testId: 'ldl-nih', date: '2026-06-08', value: '111' }], note: 'Mammogram' });
+  const sealed = await V.encrypt(key, text);
+  assert.equal(await V.decrypt(key, sealed), text);
+  assert.equal(sealed.iv.length, 16);
+  assert.ok(!/ldl|Mammogram|2026/.test(sealed.data + Buffer.from(sealed.data, 'base64').toString('latin1')));
+  const again = await V.encrypt(key, text);
+  assert.notEqual(again.data, sealed.data);                                 // fresh IV each time
+});
+test('encryption: a different key or changed data is rejected', async () => {
+  const sealed = await V.encrypt(V.newKey(), 'secret');
+  await assert.rejects(V.decrypt(V.newKey(), sealed));
+  const bytes = Buffer.from(sealed.data, 'base64'); bytes[3] ^= 1;
+  await assert.rejects(V.decrypt(V.newKey(), { ...sealed, data: bytes.toString('base64') }));
+});
+test('recovery key: 52 characters, forgiving to type, round trips', () => {
+  const key = V.newKey(), code = V.toCode(key);
+  assert.equal(code.replace(/-/g, '').length, 52);
+  assert.deepEqual([...V.fromCode(code)], [...key]);
+  const sloppy = code.toLowerCase().replace(/-/g, ' ').replace(/0/g, 'o').replace(/1/g, 'l');
+  assert.deepEqual([...V.fromCode(sloppy)], [...key]);
+  assert.equal(V.fromCode('not a key'), null);
+  assert.equal(V.fromCode(code.slice(0, -2)), null);
+});
+test('recovery key is kept per account on the device and removed on forget', () => {
+  const key = V.newKey(); V.keep('u1', key);
+  assert.deepEqual([...V.load('u1')], [...key]); assert.equal(V.load('u2'), null);
+  V.forget('u1'); assert.equal(V.load('u1'), null);
+});
