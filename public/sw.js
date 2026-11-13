@@ -1,9 +1,9 @@
 // Offline support: keep a copy of the app so it opens without a connection.
 // Pages and app files: try the network first (so updates show right away), fall back to the saved copy offline.
 // Firebase/pdf.js libraries: serve the saved copy and refresh it in the background.
-const CACHE = 'healthspan-v31';
-const SHELL = ['./', 'index.html', 'styles.css?v=31', 'vault.js?v=31', 'catalog.js?v=31', 'units.js?v=31', 'scans.js?v=31', 'summary.js?v=31', 'results.js?v=31', 'pastdates.js?v=31',
-  'myinfo.js?v=31', 'push.js?v=31', 'visit.js?v=31', 'labimport.js?v=31', 'scanreport.js?v=31', 'encourage.js?v=31', 'habits.js?v=31', 'app.js?v=31', 'cloud.js?v=31', 'firebase-config.js', 'privacy.html', 'manifest.webmanifest',
+const CACHE = 'healthspan-v32';
+const SHELL = ['./', 'index.html', 'styles.css?v=32', 'vault.js?v=32', 'catalog.js?v=32', 'units.js?v=32', 'scans.js?v=32', 'summary.js?v=32', 'results.js?v=32', 'pastdates.js?v=32',
+  'myinfo.js?v=32', 'push.js?v=32', 'visit.js?v=32', 'labimport.js?v=32', 'scanreport.js?v=32', 'encourage.js?v=32', 'habits.js?v=32', 'recipes.js?v=32', 'app.js?v=32', 'cloud.js?v=32', 'firebase-config.js', 'privacy.html', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

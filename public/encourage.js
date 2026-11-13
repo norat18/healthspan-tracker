@@ -200,7 +200,7 @@ function openRecap() {
 /* ---------- fewer tabs until there's something in them ---------- */
 function applyTabVisibility() {
   const all = S().showAllTabs, has = kind => db.results.some(r => testById(r.testId)?.kind === kind);
-  const hide = { blood: !all && !has('blood'), body: !all && !has('metric') };
+  const hide = { blood: !all && !has('blood'), body: !all && !has('metric'), recipes: !all && !(db.recipes || []).length };
   let hidden = 0;
   document.querySelectorAll('.tabs [data-view]').forEach(b => { const h = !!hide[b.dataset.view] && b.dataset.view !== view; b.hidden = h; if (h) hidden++; });
   const more = document.querySelector('.tabs [data-enc="showtabs"]'); if (more) more.hidden = !hidden;

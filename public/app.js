@@ -123,7 +123,7 @@ function restoreDay(day) {
   close(); save(`Restored your data from ${fmt(day)}`);
 }
 /* ---------- combining two versions (two devices saving at once) ---------- */
-const MERGE_KEYS = { tests: x => x.id, procedures: x => x.id, visits: x => x.id, events: x => x.id, meds: x => x.id, family: x => x.id,
+const MERGE_KEYS = { tests: x => x.id, procedures: x => x.id, visits: x => x.id, events: x => x.id, meds: x => x.id, family: x => x.id, recipes: x => x.id,
   draws: x => x.date, results: x => x.testId + '|' + x.date };
 /** Record a deletion so merging with another device doesn't bring the item back. */
 function tomb(kind, key) { db.deleted ||= {}; db.deleted[kind + ':' + key] = Date.now(); }
@@ -345,7 +345,7 @@ function draws(kind = 'blood') {
 /* ---------- views ---------- */
 function render() {
   $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  $('#view').innerHTML = ({ summary: () => vSummary(), myinfo: () => vMyInfo(), reminders: vReminders, blood: () => vBlood('blood'), body: () => vBlood('metric'), procs: vProcs, orders: vOrders, data: vData })[view]();
+  $('#view').innerHTML = ({ summary: () => vSummary(), myinfo: () => vMyInfo(), reminders: vReminders, blood: () => vBlood('blood'), body: () => vBlood('metric'), procs: vProcs, orders: vOrders, recipes: () => vRecipes(), data: vData })[view]();
   document.querySelectorAll('.tabs button').forEach(b => { if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   makeKeyboardFriendly(document.getElementById('view'));
   if (typeof applyTabVisibility === 'function') applyTabVisibility();
@@ -353,7 +353,7 @@ function render() {
 }
 /** Clickable rows and cards that aren't buttons: reachable with Tab, usable with Enter/Space, announced as buttons. */
 function makeKeyboardFriendly(root) {
-  root.querySelectorAll('[data-test],[data-proc],[data-go],[data-med],[data-event],[data-draw]').forEach(el => {
+  root.querySelectorAll('[data-test],[data-proc],[data-go],[data-med],[data-event],[data-draw],[data-recipe]').forEach(el => {
     if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(el.tagName)) return;
     el.tabIndex = 0; el.setAttribute('role', 'button');
     if (!el.getAttribute('aria-label')) { const t = el.querySelector('.title,.t-name,.rc-name,h3'); if (t) el.setAttribute('aria-label', t.textContent.trim().replace(/\s+/g, ' ')); }

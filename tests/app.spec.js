@@ -266,3 +266,25 @@ test('weekly habits under a focus goal, and the Connections section', async ({ p
   await expect(page.locator('[data-enc="strava"]')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('recipes: add, view, edit and the Recipes tab', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { db.settings.dob = '1990-05-01'; db.settings.sex = 'female'; db.settings.showAllTabs = true; save(); });
+  await page.locator('.tabs [data-view="recipes"]').click();
+  await page.locator('[data-recipenew]').click();
+  await page.locator('#recipeform [name="name"]').fill('Test Soup');
+  await page.locator('#recipeform [name="ingredients"]').fill('Soup:\nwater\nsalt\nTo serve:\nherbs');
+  await page.locator('#recipeform [name="steps"]').fill('1. Boil water.\n2. Add salt.');
+  await page.locator('#recipeform button.primary').click();
+  await expect(page.locator('#view')).toContainText('Test Soup');
+  await expect(page.locator('#view')).toContainText('3 ingredients · 2 steps');
+  await page.locator('[data-recipe]').first().click();
+  await expect(page.locator('#modal .rc-steps li')).toHaveText(['Boil water.', 'Add salt.']);
+  await expect(page.locator('#modal .rc-sub')).toHaveText(['Soup', 'To serve']);
+  await page.locator('[data-recipeedit]').click();
+  await page.locator('#recipeform [name="servings"]').fill('2');
+  await page.locator('#recipeform button.primary').click();
+  await expect(page.locator('#view')).toContainText('serves 2');
+  expect(errors).toEqual([]);
+});
