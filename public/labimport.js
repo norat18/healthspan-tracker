@@ -19,7 +19,7 @@ const LAB_ALIASES = {
   'lp-pla2': ['Lp PLA2 Activity', 'Lp-PLA2 Activity', 'Lp-PLA2'], 'nt-probnp': ['NT proBNP', 'NT-proBNP', 'proBNP, N-terminal'],
   'fibrinogen': ['Fibrinogen Activity, Clauss', 'Fibrinogen Activity', 'Fibrinogen'], 'troponin-hs': ['Troponin I, High Sensitivity', 'Troponin I, hs', 'hs-Troponin I'],
   'il-6': ['Interleukin 6 (IL 6), Serum', 'Interleukin 6, Serum', 'Interleukin-6', 'IL-6'], 'nmr-lipoprotein-particle-count': ['LDL P', 'LDL-P', 'LDL Particle Number'],
-  'omega-3-index': ['EPA+DPA+DHA', 'Omega-3 Index', 'OmegaCheck'],
+  'omega-3-index': ['Omega-3 Index'], 'omegacheck': ['EPA+DPA+DHA', 'OmegaCheck'],
   'vitamin-d3': ['Vitamin D, 25-OH, D3', '25-Hydroxyvitamin D3'], 'vitamin-d2': ['Vitamin D, 25-OH, D2', '25-Hydroxyvitamin D2'],
   // tests people may have added themselves (used only when that test exists in their tracker)
   'iron': ['Iron, Total', 'Iron'], 'tibc': ['Iron Binding Capacity', 'TIBC'], 'iron-saturation': ['% Saturation', 'Iron Saturation', 'Transferrin Saturation'],
